@@ -110,7 +110,7 @@ export function Almacenes() {
 
       <form className="almacen-form" onSubmit={handleAdd}>
         <input
-          placeholder="Nombre del almacén (ej. Bodega norte)"
+          placeholder="Nombre del almacén (ej. Patio Norte)"
           value={nombreNuevo}
           onChange={(e) => setNombreNuevo(e.target.value)}
         />
@@ -136,7 +136,7 @@ export function Almacenes() {
         <div className="card state-card">
           <div className="state-icon">▣</div>
           <h3>Sin almacenes todavía</h3>
-          <p>Agrega tu primer almacén arriba para organizar dónde vive cada material.</p>
+          <p>Agrega tu primer almacén arriba para organizar dónde vive cada riel o componente.</p>
         </div>
       ) : (
         <div className="almacen-list">

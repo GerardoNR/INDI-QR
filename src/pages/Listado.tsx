@@ -99,7 +99,7 @@ export function Listado() {
             />
           </div>
           <h3>Sin registros todavía</h3>
-          <p>Escanea un código para empezar a llenar tu inventario.</p>
+          <p>Escanea un código para empezar a registrar tu material de vía.</p>
           <Link to="/scanner" className="btn-primary-link">
             ⊹ Escanear el primero
           </Link>

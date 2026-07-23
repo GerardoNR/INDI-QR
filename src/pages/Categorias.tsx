@@ -115,7 +115,7 @@ export function Categorias() {
 
       <form className="almacen-form" onSubmit={handleAdd}>
         <input
-          placeholder="Nombre de la categoría (ej. Neumática)"
+          placeholder="Nombre de la categoría (ej. Rieles, Durmientes)"
           value={nombreNuevo}
           onChange={(e) => setNombreNuevo(e.target.value)}
         />
@@ -141,7 +141,7 @@ export function Categorias() {
         <div className="card state-card">
           <div className="state-icon">◆</div>
           <h3>Sin categorías todavía</h3>
-          <p>Agrega tu primera categoría arriba para clasificar tus materiales.</p>
+          <p>Agrega tu primera categoría arriba para clasificar tus rieles y componentes.</p>
         </div>
       ) : (
         <div className="almacen-list">

@@ -92,7 +92,7 @@ export function Dashboard() {
       <div className="dashboard-hero">
         <p className="dashboard-eyebrow">{saludo()}</p>
         <h1>Hola, {nombreUsuario}</h1>
-        <p className="hint">Este es el estado de tu inventario hoy.</p>
+        <p className="hint">Este es el estado de tu material de vía hoy.</p>
       </div>
 
       <div className="stat-grid">
@@ -216,7 +216,7 @@ export function Dashboard() {
             <div className="skel skel-row" />
           </div>
         ) : recientes.length === 0 ? (
-          <p className="hint">Aún no hay materiales — escanea el primero.</p>
+          <p className="hint">Aún no hay material registrado — escanea el primero.</p>
         ) : (
           <div className="recent-list">
             {recientes.map((m) => (

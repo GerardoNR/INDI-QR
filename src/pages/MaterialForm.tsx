@@ -6,7 +6,7 @@ import { useToast } from '../context/ToastContext'
 import { categoryColor } from '../utils/categoryColors'
 import { lookupProducto } from '../utils/lookupProducto'
 
-const SUGGESTED_CATEGORIAS = ['Tornillería', 'Eléctrico', 'Pintura', 'Plomería', 'Herramienta', 'Seguridad']
+const SUGGESTED_CATEGORIAS = ['Rieles', 'Durmientes', 'Clips de fijación', 'Placas de asiento', 'Balasto', 'Señalización']
 
 export function MaterialForm() {
   const { codigo = '' } = useParams()
@@ -182,7 +182,7 @@ export function MaterialForm() {
 
           <label>
             Unidad
-            <input value={unidad} onChange={(e) => setUnidad(e.target.value)} placeholder="pza, kg, caja…" />
+            <input value={unidad} onChange={(e) => setUnidad(e.target.value)} placeholder="pza, kg, m, caja…" />
           </label>
 
           <label>

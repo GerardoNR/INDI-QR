@@ -71,14 +71,14 @@ export function NavBar() {
           aria-label="Cuenta"
         >
           {inicial}
-          {hayBajoStock && <span className="navbar-avatar-dot" title="Hay materiales con pocas existencias" />}
+          {hayBajoStock && <span className="navbar-avatar-dot" title="Hay material con pocas existencias" />}
         </button>
         {menuOpen && (
           <div className="navbar-menu">
             <div className="navbar-menu-email">{email}</div>
             {hayBajoStock && (
               <NavLink to="/" className="navbar-menu-alert" onClick={() => setMenuOpen(false)}>
-                ● Hay materiales con pocas existencias
+                ● Hay material con pocas existencias
               </NavLink>
             )}
             <button
