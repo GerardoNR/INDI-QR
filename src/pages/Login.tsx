@@ -79,12 +79,12 @@ export function Login() {
         <div className="auth-marketing">
           <img src="/app-icon.svg" alt="" className="brand-mark auth-marketing-mark" />
           <h2 className="auth-marketing-title">
-            Todo tu material de vía,
+            Todo el material de tus bodegas,
             <br />
             en un solo lugar.
           </h2>
           <p className="auth-marketing-copy">
-            Escanea QR o código de barras y tu equipo de vía ve los mismos datos al instante.
+            Escanea QR o código de barras y tu equipo de obra ve los mismos datos al instante.
           </p>
           <div className="auth-marketing-tags mono">
             <span>■ Tiempo real</span>
@@ -96,7 +96,7 @@ export function Login() {
         <form className="card auth-card" onSubmit={handleSubmit}>
           <img src="/logo-indi.png" alt="" className="auth-card-logo" />
           <h1>Bienvenido a INDI QR</h1>
-          <p className="auth-subtitle">Escanea y registra material ferroviario en segundos.</p>
+          <p className="auth-subtitle">Escanea y registra material de construcción en segundos.</p>
 
           <div className="auth-tabs">
             <button

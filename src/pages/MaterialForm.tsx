@@ -6,7 +6,7 @@ import { useToast } from '../context/ToastContext'
 import { categoryColor } from '../utils/categoryColors'
 import { lookupProducto } from '../utils/lookupProducto'
 
-const SUGGESTED_CATEGORIAS = ['Rieles', 'Durmientes', 'Clips de fijación', 'Placas de asiento', 'Balasto', 'Señalización']
+const SUGGESTED_CATEGORIAS = ['Asfalto', 'Grava', 'Cemento', 'Varilla', 'Concreto', 'Señalización', 'Mezcla asfáltica']
 
 export function MaterialForm() {
   const { codigo = '' } = useParams()

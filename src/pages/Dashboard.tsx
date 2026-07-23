@@ -92,7 +92,7 @@ export function Dashboard() {
       <div className="dashboard-hero">
         <p className="dashboard-eyebrow">{saludo()}</p>
         <h1>Hola, {nombreUsuario}</h1>
-        <p className="hint">Este es el estado de tu material de vía hoy.</p>
+        <p className="hint">Este es el estado de tus materiales hoy.</p>
       </div>
 
       <div className="stat-grid">

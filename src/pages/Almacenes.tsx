@@ -136,7 +136,7 @@ export function Almacenes() {
         <div className="card state-card">
           <div className="state-icon">▣</div>
           <h3>Sin almacenes todavía</h3>
-          <p>Agrega tu primer almacén arriba para organizar dónde vive cada riel o componente.</p>
+          <p>Agrega tu primer almacén arriba para organizar los rieles (materiales) que llegan a cada bodega.</p>
         </div>
       ) : (
         <div className="almacen-list">
