@@ -41,6 +41,19 @@ export function Scanner() {
     })
     let cancelled = false
 
+    const onDecode: Parameters<typeof reader.decodeFromConstraints>[2] = (result, err) => {
+      if (cancelled) return
+      if (result) {
+        const codigo = result.getText().trim()
+        controlsRef.current?.stop()
+        navigator.vibrate?.(60)
+        setScanned(true)
+        setTimeout(() => navigate(`/material/${encodeURIComponent(codigo)}`), 220)
+      } else if (err && err.name !== 'NotFoundException') {
+        // ruido normal de frames sin código detectado: se ignora
+      }
+    }
+
     reader
       .decodeFromConstraints(
         {
@@ -55,18 +68,17 @@ export function Scanner() {
           },
         },
         videoRef.current!,
-        (result, err) => {
-          if (cancelled) return
-          if (result) {
-            const codigo = result.getText().trim()
-            controlsRef.current?.stop()
-            navigator.vibrate?.(60)
-            setScanned(true)
-            setTimeout(() => navigate(`/material/${encodeURIComponent(codigo)}`), 220)
-          } else if (err && err.name !== 'NotFoundException') {
-            // ruido normal de frames sin código detectado: se ignora
-          }
-        },
+        onDecode,
+      )
+      .catch(() =>
+        // Algunas versiones de Safari/iOS rechazan toda la petición si no
+        // reconocen "advanced.focusMode" en vez de ignorarla como indica el
+        // estándar — se reintenta sin esa restricción antes de rendirse.
+        reader.decodeFromConstraints(
+          { video: { facingMode: 'environment', width: { ideal: 1920 }, height: { ideal: 1080 } } },
+          videoRef.current!,
+          onDecode,
+        ),
       )
       .then((controls) => {
         if (cancelled) {

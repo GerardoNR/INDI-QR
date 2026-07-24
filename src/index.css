@@ -135,6 +135,9 @@ code {
   max-width: 960px;
   margin: 0 auto;
   padding: 24px 16px 48px;
+  padding-left: max(16px, env(safe-area-inset-left));
+  padding-right: max(16px, env(safe-area-inset-right));
+  padding-bottom: max(48px, env(safe-area-inset-bottom));
 }
 
 /* Logo mark */
