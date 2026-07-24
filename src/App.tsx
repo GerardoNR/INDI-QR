@@ -1,6 +1,7 @@
 import { BrowserRouter, Navigate, Route, Routes, useLocation } from 'react-router-dom'
 import { AuthProvider } from './context/AuthContext'
 import { ToastProvider } from './context/ToastContext'
+import { ThemeProvider } from './context/ThemeContext'
 import { ProtectedRoute } from './components/ProtectedRoute'
 import { NavBar } from './components/NavBar'
 import { Login } from './pages/Login'
@@ -105,12 +106,14 @@ export default function App() {
   if (!isSupabaseConfigured) return <SetupNeeded />
 
   return (
-    <ToastProvider>
-      <AuthProvider>
-        <BrowserRouter>
-          <AppShell />
-        </BrowserRouter>
-      </AuthProvider>
-    </ToastProvider>
+    <ThemeProvider>
+      <ToastProvider>
+        <AuthProvider>
+          <BrowserRouter>
+            <AppShell />
+          </BrowserRouter>
+        </AuthProvider>
+      </ToastProvider>
+    </ThemeProvider>
   )
 }

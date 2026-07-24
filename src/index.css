@@ -17,6 +17,8 @@
   --border: #2a2a2a; /* bordes sutiles de cards */
   --border-input: #3a3a3a; /* bordes de inputs, un poco más visibles */
 
+  --bg-navbar: rgba(10, 10, 10, 0.7); /* fondo translúcido de la barra superior */
+
   --danger: #ff6b6b;
   --danger-bg: rgba(255, 107, 107, 0.12);
   --danger-border: rgba(255, 107, 107, 0.32);
@@ -34,6 +36,30 @@
   color: var(--text);
   background: var(--bg-canvas);
   -webkit-font-smoothing: antialiased;
+}
+
+/* Modo claro — mismos nombres de variable, así que el resto de la hoja
+   (que solo usa var(--...)) se adapta sin tener que reescribir cada regla.
+   El azul/rojo de marca se mantienen iguales en ambos modos; lo que cambia
+   son los neutros (fondo, texto, bordes). */
+:root[data-theme='light'] {
+  --acc-soft: rgba(1, 101, 247, 0.12);
+
+  --ink: #0f172a;
+  --text: #55606e;
+  --text-soft: rgba(85, 96, 110, 0.75);
+
+  --bg: rgba(255, 255, 255, 0.75);
+  --bg-alt: rgba(15, 23, 42, 0.045);
+  --bg-canvas: #f3f4f6;
+  --bg-solid: #ffffff;
+
+  --border: #e2e4e9;
+  --border-input: #cbd0d8;
+
+  --bg-navbar: rgba(255, 255, 255, 0.75);
+
+  color-scheme: light;
 }
 
 * {
@@ -136,8 +162,13 @@ code {
   justify-content: space-between;
   gap: 12px;
   padding: 10px 16px;
+  /* En iOS con viewport-fit=cover el contenido se extiende bajo el
+     notch/isla dinámica — sin esto el logo y el menú quedan tapados. */
+  padding-top: max(10px, env(safe-area-inset-top));
+  padding-left: max(16px, env(safe-area-inset-left));
+  padding-right: max(16px, env(safe-area-inset-right));
   border-bottom: 1px solid var(--border);
-  background: rgba(10, 10, 10, 0.7);
+  background: var(--bg-navbar);
   backdrop-filter: var(--blur-glass);
   -webkit-backdrop-filter: var(--blur-glass);
 }
@@ -210,6 +241,29 @@ code {
   transform: scale(0.97);
 }
 
+.navbar-theme-toggle {
+  flex-shrink: 0;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: var(--bg-alt);
+  color: var(--text);
+  box-shadow: none;
+}
+
+.navbar-theme-toggle:hover:not(:disabled) {
+  background: var(--border);
+  color: var(--ink);
+}
+
+.navbar-theme-toggle svg {
+  width: 17px;
+  height: 17px;
+}
+
 .navbar-avatar-wrap {
   position: relative;
   flex-shrink: 0;
@@ -256,6 +310,37 @@ code {
   text-decoration: none;
   padding-bottom: 10px;
   border-bottom: 1px solid var(--border);
+}
+
+.navbar-menu-signout {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: none;
+  box-shadow: none;
+  color: var(--danger);
+  font-weight: 500;
+  font-size: 13.5px;
+  justify-content: flex-start;
+  transition: background-color 0.15s ease, color 0.15s ease, opacity 0.15s ease;
+}
+
+.navbar-menu-signout svg {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+}
+
+.navbar-menu-signout:hover:not(:disabled) {
+  background: var(--danger-bg);
+  color: var(--danger);
+}
+
+.navbar-menu-signout:active:not(:disabled) {
+  transform: scale(0.98);
 }
 
 .navbar-menu {
@@ -354,7 +439,7 @@ button.secondary:hover:not(:disabled) {
 
 button.ghost {
   background: var(--bg-solid);
-  color: #fff;
+  color: var(--ink);
   box-shadow: none;
 }
 
@@ -516,8 +601,12 @@ label {
   border: 1.5px solid var(--border-input);
   color: var(--text-soft);
   cursor: pointer;
+  /* Sin esto, el chip hereda el box-shadow azul flotante del botón
+     primario (button { box-shadow: var(--shadow-float) }) y se ve como
+     si todos los chips estuvieran "iluminados" a la vez. */
+  box-shadow: none;
   transition: border-color 0.15s ease, background-color 0.15s ease, color 0.15s ease,
-    transform 0.1s ease;
+    box-shadow 0.15s ease, transform 0.1s ease;
 }
 
 .cat-chip:hover {
@@ -530,7 +619,9 @@ label {
 }
 
 .cat-chip.selected {
-  border-color: currentColor;
+  background: var(--acc-soft);
+  color: var(--acc);
+  border-color: var(--acc);
 }
 
 /* Card */
@@ -748,10 +839,13 @@ label {
   }
 }
 
+/* Panel de marca siempre oscuro (mismos valores fijos en ambos temas),
+   igual que el visor del scanner — es un panel promocional con su propio
+   contraste, no una superficie que deba seguir el tema de la app. */
 .auth-marketing {
   display: none;
   flex: 1;
-  background: var(--bg-solid);
+  background: #1e1e1e;
   color: #fff;
   padding: 48px;
   flex-direction: column;
@@ -838,13 +932,15 @@ label {
   background: var(--bg);
 }
 
-/* Scanner */
+/* Scanner — siempre oscuro (mismos valores fijos en ambos temas) porque la
+   vista de cámara necesita contraste oscuro alrededor del video, igual que
+   el visor de cualquier app de cámara. */
 .scanner-page {
-  background: var(--bg-canvas);
+  background: #0a0a0a;
   color: #fff;
   margin: -24px -16px 0;
   min-height: calc(100svh - 57px);
-  padding: 28px 16px 40px;
+  padding: 28px 16px max(40px, env(safe-area-inset-bottom));
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -865,7 +961,7 @@ label {
   aspect-ratio: 3 / 4;
   border-radius: 24px;
   overflow: hidden;
-  background: var(--bg-canvas);
+  background: #0a0a0a;
   margin: 16px 0;
   position: relative;
 }
@@ -1341,7 +1437,7 @@ label {
 .toast-success {
   background: var(--bg-solid);
   border: 1px solid var(--border);
-  color: #fff;
+  color: var(--ink);
 }
 
 .toast-info {
@@ -1384,7 +1480,7 @@ label {
 }
 
 .toast-success .toast-detail {
-  color: rgba(255, 255, 255, 0.6);
+  color: var(--text-soft);
 }
 
 @keyframes toastIn {
