@@ -244,7 +244,12 @@ code {
   transform: scale(0.97);
 }
 
-.navbar-theme-toggle {
+.navbar-options-wrap {
+  position: relative;
+  flex-shrink: 0;
+}
+
+.navbar-options-btn {
   flex-shrink: 0;
   width: 32px;
   height: 32px;
@@ -257,19 +262,14 @@ code {
   box-shadow: none;
 }
 
-.navbar-theme-toggle:hover:not(:disabled) {
+.navbar-options-btn:hover:not(:disabled) {
   background: var(--border);
   color: var(--ink);
 }
 
-.navbar-theme-toggle svg {
-  width: 17px;
-  height: 17px;
-}
-
-.navbar-avatar-wrap {
-  position: relative;
-  flex-shrink: 0;
+.navbar-options-btn svg {
+  width: 18px;
+  height: 18px;
 }
 
 .navbar-avatar {
@@ -311,8 +311,112 @@ code {
   font-size: 12.5px;
   color: var(--danger);
   text-decoration: none;
-  padding-bottom: 10px;
-  border-bottom: 1px solid var(--border);
+}
+
+.navbar-menu-label {
+  display: block;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-soft);
+}
+
+/* Control segmentado: un solo "riel" con fondo sutil y las 3 opciones
+   flotando encima — el seleccionado se despega con superficie sólida y
+   sombra, en vez de tres chips sueltos con su propio borde cada uno. */
+.theme-picker {
+  display: flex;
+  gap: 4px;
+  padding: 4px;
+  background: var(--bg-alt);
+  border-radius: 14px;
+}
+
+.theme-chip {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 4px 7px;
+  border-radius: 10px;
+  background: transparent;
+  border: none;
+  color: var(--text-soft);
+  font-size: 11px;
+  font-weight: 600;
+  box-shadow: none;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.theme-chip-icon {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: var(--bg-solid);
+  color: var(--text);
+  transition: background-color 0.15s ease, color 0.15s ease, transform 0.15s ease;
+}
+
+.theme-chip-icon svg {
+  width: 16px;
+  height: 16px;
+}
+
+.theme-chip:hover {
+  color: var(--ink);
+}
+
+.theme-chip:hover .theme-chip-icon {
+  transform: scale(1.08);
+}
+
+.theme-chip.selected {
+  background: var(--bg-solid);
+  color: var(--acc);
+  box-shadow: var(--shadow-card);
+}
+
+.theme-chip.selected .theme-chip-icon {
+  background: var(--acc);
+  color: #fff;
+}
+
+.navbar-menu-sep {
+  height: 1px;
+  background: var(--border);
+  margin: 2px 0;
+}
+
+.navbar-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: none;
+  box-shadow: none;
+  color: var(--text);
+  font-weight: 500;
+  font-size: 13.5px;
+  text-decoration: none;
+  justify-content: flex-start;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.navbar-menu-item svg {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+}
+
+.navbar-menu-item:hover:not(:disabled) {
+  background: var(--bg-alt);
+  color: var(--ink);
 }
 
 .navbar-menu-signout {
@@ -363,13 +467,17 @@ code {
   animation: fadeInUp 0.18s ease both;
 }
 
+.navbar-menu-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
 .navbar-menu-email {
   font-family: var(--mono);
   font-size: 12px;
   color: var(--text-soft);
   word-break: break-all;
-  padding-bottom: 10px;
-  border-bottom: 1px solid var(--border);
 }
 
 @media (max-width: 640px) {
@@ -391,6 +499,105 @@ code {
 .navbar.navbar-dark {
   background: rgba(0, 0, 0, 0.75);
   border-bottom-color: rgba(255, 255, 255, 0.06);
+}
+
+/* Panel de Ayuda / Soporte (FAQ) */
+.help-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgba(0, 0, 0, 0.5);
+  animation: fadeInUp 0.15s ease both;
+}
+
+.help-modal {
+  width: 100%;
+  max-width: 420px;
+  max-height: min(600px, 85vh);
+  overflow-y: auto;
+  padding: 22px;
+  border-radius: 20px;
+  background: var(--bg-solid);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-card);
+}
+
+.help-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 4px;
+}
+
+.help-modal-header h3 {
+  margin: 0;
+}
+
+.help-modal-close {
+  flex-shrink: 0;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: var(--bg-alt);
+  color: var(--text);
+  box-shadow: none;
+}
+
+.help-modal-close:hover:not(:disabled) {
+  background: var(--border);
+  color: var(--ink);
+}
+
+.help-modal-close svg {
+  width: 15px;
+  height: 15px;
+}
+
+.faq-list {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  margin: 14px 0 18px;
+}
+
+.faq-item {
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--border);
+}
+
+.faq-item:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+
+.faq-question {
+  margin: 0 0 6px;
+  font-weight: 600;
+  color: var(--ink);
+  font-size: 14px;
+}
+
+.faq-answer {
+  margin: 0;
+  color: var(--text);
+  font-size: 13.5px;
+  line-height: 1.5;
+}
+
+.help-modal .hint a {
+  color: var(--acc);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.help-modal .hint a:hover {
+  text-decoration: underline;
 }
 
 /* Buttons & inputs */

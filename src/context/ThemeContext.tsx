@@ -1,39 +1,62 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react'
 
-type Theme = 'dark' | 'light'
+export type ThemePreference = 'light' | 'dark' | 'system'
+type AppliedTheme = 'light' | 'dark'
 
 const STORAGE_KEY = 'indi-qr-theme'
-const THEME_COLOR: Record<Theme, string> = { dark: '#0a0e18', light: '#f3f4f6' }
+const THEME_COLOR: Record<AppliedTheme, string> = { dark: '#0a0e18', light: '#f3f4f6' }
+
+function systemPrefersLight() {
+  return window.matchMedia('(prefers-color-scheme: light)').matches
+}
+
+function resolveApplied(preference: ThemePreference): AppliedTheme {
+  return preference === 'system' ? (systemPrefersLight() ? 'light' : 'dark') : preference
+}
+
+function getInitialPreference(): ThemePreference {
+  const stored = localStorage.getItem(STORAGE_KEY)
+  if (stored === 'light' || stored === 'dark' || stored === 'system') return stored
+  return 'system'
+}
 
 interface ThemeContextValue {
-  theme: Theme
-  toggleTheme: () => void
+  preference: ThemePreference
+  theme: AppliedTheme
+  setPreference: (preference: ThemePreference) => void
 }
 
-function getInitialTheme(): Theme {
-  const stored = localStorage.getItem(STORAGE_KEY)
-  if (stored === 'dark' || stored === 'light') return stored
-  // Sin preferencia guardada, respeta lo que pida el sistema — si no,
-  // el modo oscuro sigue siendo el look de marca por defecto.
-  return window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark'
-}
-
-const ThemeContext = createContext<ThemeContextValue>({ theme: 'dark', toggleTheme: () => {} })
+const ThemeContext = createContext<ThemeContextValue>({
+  preference: 'system',
+  theme: 'dark',
+  setPreference: () => {},
+})
 
 export function ThemeProvider({ children }: { children: ReactNode }) {
-  const [theme, setTheme] = useState<Theme>(getInitialTheme)
+  const [preference, setPreference] = useState<ThemePreference>(getInitialPreference)
+  const [theme, setTheme] = useState<AppliedTheme>(() => resolveApplied(preference))
+
+  useEffect(() => {
+    localStorage.setItem(STORAGE_KEY, preference)
+    setTheme(resolveApplied(preference))
+
+    if (preference !== 'system') return
+
+    // Con preferencia "Sistema" el tema aplicado sigue el sistema operativo
+    // en vivo — si el usuario cambia su modo oscuro/claro del sistema sin
+    // recargar la app, esto lo refleja al instante.
+    const mediaQuery = window.matchMedia('(prefers-color-scheme: light)')
+    const onSystemChange = () => setTheme(resolveApplied('system'))
+    mediaQuery.addEventListener('change', onSystemChange)
+    return () => mediaQuery.removeEventListener('change', onSystemChange)
+  }, [preference])
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme
-    localStorage.setItem(STORAGE_KEY, theme)
     document.querySelector('meta[name="theme-color"]')?.setAttribute('content', THEME_COLOR[theme])
   }, [theme])
 
-  function toggleTheme() {
-    setTheme((t) => (t === 'dark' ? 'light' : 'dark'))
-  }
-
-  return <ThemeContext.Provider value={{ theme, toggleTheme }}>{children}</ThemeContext.Provider>
+  return <ThemeContext.Provider value={{ preference, theme, setPreference }}>{children}</ThemeContext.Provider>
 }
 
 export function useTheme() {
