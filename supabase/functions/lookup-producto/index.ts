@@ -1,7 +1,11 @@
 // Edge Function: dado un código de barras (UPC/EAN), busca el nombre real del
-// producto en UPCitemdb (base de datos pública de mercancía general, no solo
-// alimentos). Corre en el servidor porque UPCitemdb no permite llamadas
-// directas desde el navegador (su CORS solo autoriza su propio sitio).
+// producto. Corre en el servidor porque ninguna de las dos fuentes permite
+// llamadas directas desde el navegador (CORS solo autoriza sus propios sitios).
+//
+// Se intenta primero UPCitemdb (buena cobertura de mercancía general de EE.UU.)
+// y, si no encuentra nada, se intenta Open Food Facts (gratis, sin API key,
+// con mucha mejor cobertura de productos mexicanos/latinoamericanos — ej.
+// Bimbo/Marinela — al ser una base colaborativa alimentada globalmente).
 
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
@@ -14,6 +18,29 @@ function jsonResponse(body: unknown, status = 200) {
     status,
     headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' },
   })
+}
+
+async function buscarEnUpcitemdb(codigo: string) {
+  const res = await fetch(`https://api.upcitemdb.com/prod/trial/lookup?upc=${encodeURIComponent(codigo)}`)
+  if (!res.ok) return null
+
+  const data = await res.json()
+  const item = data?.items?.[0]
+  if (!item) return null
+
+  return { nombre: item.title ?? null, marca: item.brand ?? null }
+}
+
+async function buscarEnOpenFoodFacts(codigo: string) {
+  const res = await fetch(
+    `https://world.openfoodfacts.org/api/v2/product/${encodeURIComponent(codigo)}.json?fields=product_name,brands,status`,
+  )
+  if (!res.ok) return null
+
+  const data = await res.json()
+  if (data?.status !== 1 || !data?.product?.product_name) return null
+
+  return { nombre: data.product.product_name, marca: data.product.brands ?? null }
 }
 
 Deno.serve(async (req) => {
@@ -33,28 +60,14 @@ Deno.serve(async (req) => {
     return jsonResponse({ error: 'Falta el código' }, 400)
   }
 
-  try {
-    const upstream = await fetch(
-      `https://api.upcitemdb.com/prod/trial/lookup?upc=${encodeURIComponent(codigo)}`,
-    )
-
-    if (!upstream.ok) {
-      return jsonResponse({ nombre: null, marca: null, encontrado: false })
+  for (const buscar of [buscarEnUpcitemdb, buscarEnOpenFoodFacts]) {
+    try {
+      const encontrado = await buscar(codigo)
+      if (encontrado) return jsonResponse({ ...encontrado, encontrado: true })
+    } catch {
+      // se ignora y se intenta la siguiente fuente
     }
-
-    const data = await upstream.json()
-    const item = data?.items?.[0]
-
-    if (!item) {
-      return jsonResponse({ nombre: null, marca: null, encontrado: false })
-    }
-
-    return jsonResponse({
-      nombre: item.title ?? null,
-      marca: item.brand ?? null,
-      encontrado: true,
-    })
-  } catch {
-    return jsonResponse({ nombre: null, marca: null, encontrado: false })
   }
+
+  return jsonResponse({ nombre: null, marca: null, encontrado: false })
 })
