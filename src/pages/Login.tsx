@@ -1,5 +1,5 @@
 import { useRef, useState, type FormEvent } from 'react'
-import { Navigate } from 'react-router-dom'
+import { Navigate, useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 
@@ -22,9 +22,25 @@ function EyeOffIcon() {
   )
 }
 
+// Supabase/GoTrue devuelve estos mensajes en inglés y a veces poco claros
+// para alguien que no conoce la API — se traducen los más comunes.
+function translateAuthError(message: string): string {
+  const m = message.toLowerCase()
+  if (m.includes('invalid login credentials')) return 'Correo o contraseña incorrectos.'
+  if (m.includes('email not confirmed')) return 'Debes confirmar tu correo antes de iniciar sesión. Revisa tu bandeja de entrada.'
+  if (m.includes('already registered') || m.includes('already exists')) return 'Ya existe una cuenta con ese correo. Intenta iniciar sesión.'
+  if (m.includes('password should be at least')) return 'La contraseña debe tener al menos 6 caracteres.'
+  if (m.includes('rate limit exceeded')) return 'Se alcanzó el límite de correos de confirmación del proyecto. Espera unos minutos e intenta de nuevo.'
+  if (m.includes('is invalid')) return 'Ese correo no es válido. Revisa que esté bien escrito.'
+  if (m.includes('signups not allowed') || m.includes('signup is disabled')) return 'La creación de cuentas está deshabilitada en este proyecto.'
+  return message
+}
+
 export function Login() {
   const { session } = useAuth()
+  const navigate = useNavigate()
   const [mode, setMode] = useState<'login' | 'signup'>('login')
+  const [nombre, setNombre] = useState('')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
@@ -52,10 +68,14 @@ export function Login() {
       const { error } =
         mode === 'login'
           ? await supabase.auth.signInWithPassword({ email, password })
-          : await supabase.auth.signUp({ email, password })
+          : await supabase.auth.signUp({
+              email,
+              password,
+              options: { data: { nombre: nombre.trim() } },
+            })
 
       if (error) {
-        setError(error.message)
+        setError(translateAuthError(error.message))
         return
       }
 
@@ -66,6 +86,15 @@ export function Login() {
         await supabase.auth.signOut()
         setInfo('Cuenta creada. Revisa tu correo si se pide confirmación, luego inicia sesión.')
         setMode('login')
+        setNombre('')
+      } else {
+        // No basta con esperar a que el listener de AuthContext propague la
+        // sesión: si ese evento se retrasa (red lenta, pestaña en segundo
+        // plano) el usuario se queda viendo el formulario de login como si
+        // no hubiera pasado nada, aunque el login sí funcionó en el
+        // servidor — hasta que recarga la página a mano. Navegar aquí de
+        // una vez lo hace inmediato sin depender de ese evento.
+        navigate('/', { replace: true })
       }
     } finally {
       submittingRef.current = false
@@ -120,6 +149,19 @@ export function Login() {
               Crear cuenta
             </button>
           </div>
+
+          {mode === 'signup' && (
+            <label>
+              Nombre
+              <input
+                type="text"
+                required
+                value={nombre}
+                onChange={(e) => setNombre(e.target.value)}
+                autoComplete="name"
+              />
+            </label>
+          )}
 
           <label>
             Correo

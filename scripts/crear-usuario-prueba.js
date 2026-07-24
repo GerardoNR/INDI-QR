@@ -1,7 +1,7 @@
-// Uso: node --env-file=.env scripts/create-test-user.mjs [email] [password]
+// Uso: node --env-file=.env scripts/crear-usuario-prueba.js [email] [password]
 // Crea (o confirma) un usuario directo en Supabase Auth con email_confirm:
 // true, sin enviar correo de confirmación — evita el límite de envíos del
-// mailer gratuito mientras se prueba la app.
+// mailer gratuito mientras se prueba la app localmente.
 //
 // Requiere SUPABASE_SERVICE_ROLE_KEY en .env (Project Settings > API >
 // service_role). Esta key nunca debe usarse en el frontend ni llevar el
@@ -17,7 +17,7 @@ if (!url || !serviceRoleKey) {
   process.exit(1)
 }
 
-const [, , email = 'prueba@indiqr.com', password = 'Prueba123!'] = process.argv
+const [, , email = 'admin@indiqr.local', password = 'Prueba123!'] = process.argv
 
 const admin = createClient(url, serviceRoleKey)
 

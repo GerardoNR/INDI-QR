@@ -20,21 +20,34 @@ export function Almacenes() {
 
   async function load() {
     setLoading(true)
-    const [almacenesRes, materialesRes] = await Promise.all([
-      supabase.from('almacenes').select('*').order('nombre'),
-      supabase.from('materiales').select('ubicacion'),
-    ])
+    setError(null)
+    try {
+      // Renueva el token si venció mientras la pestaña estaba en segundo
+      // plano — de lo contrario las consultas de abajo lo usan vencido,
+      // RLS filtra todas las filas sin dar error, y la lista se ve vacía.
+      await supabase.auth.getSession()
 
-    if (almacenesRes.error) setError(almacenesRes.error.message)
-    else setAlmacenes(almacenesRes.data ?? [])
+      const [almacenesRes, materialesRes] = await Promise.all([
+        supabase.from('almacenes').select('*').order('nombre'),
+        supabase.from('materiales').select('ubicacion'),
+      ])
 
-    const counts: Record<string, number> = {}
-    for (const { ubicacion } of materialesRes.data ?? []) {
-      if (!ubicacion) continue
-      counts[ubicacion] = (counts[ubicacion] ?? 0) + 1
+      if (almacenesRes.error) setError(almacenesRes.error.message)
+      else setAlmacenes(almacenesRes.data ?? [])
+
+      const counts: Record<string, number> = {}
+      for (const { ubicacion } of materialesRes.data ?? []) {
+        if (!ubicacion) continue
+        counts[ubicacion] = (counts[ubicacion] ?? 0) + 1
+      }
+      setConteos(counts)
+    } catch (e) {
+      // Un fetch que falla a nivel de red dejaba loading en true para
+      // siempre — sin este catch la página no se recuperaba sin recargar.
+      setError(e instanceof Error ? e.message : 'No se pudo conectar. Revisa tu conexión e intenta de nuevo.')
+    } finally {
+      setLoading(false)
     }
-    setConteos(counts)
-    setLoading(false)
   }
 
   useEffect(() => {
@@ -46,11 +59,20 @@ export function Almacenes() {
     const nombre = nombreNuevo.trim()
     if (!nombre) return
     setCreando(true)
+    // Renueva el token si venció mientras se llenaba el formulario — de lo
+    // contrario el insert lo rechaza por RLS con un error crudo de Postgres.
+    await supabase.auth.getSession()
     const { data, error } = await supabase.from('almacenes').insert({ nombre, notas: notasNuevo.trim() || null }).select().single()
     setCreando(false)
 
     if (error) {
-      setError(error.message.includes('duplicate') ? `Ya existe un almacén llamado "${nombre}".` : error.message)
+      setError(
+        error.message.includes('duplicate')
+          ? `Ya existe un almacén llamado "${nombre}".`
+          : error.message.toLowerCase().includes('row-level security')
+            ? 'Tu sesión expiró o no es válida. Vuelve a iniciar sesión e intenta de nuevo.'
+            : error.message,
+      )
       return
     }
 
@@ -70,13 +92,20 @@ export function Almacenes() {
   async function handleSaveEdit(id: string) {
     const nombre = editNombre.trim()
     if (!nombre) return
+    await supabase.auth.getSession()
     const { error } = await supabase
       .from('almacenes')
       .update({ nombre, notas: editNotas.trim() || null })
       .eq('id', id)
 
     if (error) {
-      setError(error.message.includes('duplicate') ? `Ya existe un almacén llamado "${nombre}".` : error.message)
+      setError(
+        error.message.includes('duplicate')
+          ? `Ya existe un almacén llamado "${nombre}".`
+          : error.message.toLowerCase().includes('row-level security')
+            ? 'Tu sesión expiró o no es válida. Vuelve a iniciar sesión e intenta de nuevo.'
+            : error.message,
+      )
       return
     }
 
@@ -90,9 +119,14 @@ export function Almacenes() {
 
   async function handleDelete(a: Almacen) {
     if (!confirm(`¿Eliminar el almacén "${a.nombre}"? Los materiales que ya tengan esta ubicación no se modifican.`)) return
+    await supabase.auth.getSession()
     const { error } = await supabase.from('almacenes').delete().eq('id', a.id)
     if (error) {
-      setError(error.message)
+      setError(
+        error.message.toLowerCase().includes('row-level security')
+          ? 'Tu sesión expiró o no es válida. Vuelve a iniciar sesión e intenta de nuevo.'
+          : error.message,
+      )
       return
     }
     setAlmacenes((prev) => prev.filter((x) => x.id !== a.id))
@@ -109,16 +143,22 @@ export function Almacenes() {
       </div>
 
       <form className="almacen-form" onSubmit={handleAdd}>
-        <input
-          placeholder="Nombre del almacén (ej. Patio Norte)"
-          value={nombreNuevo}
-          onChange={(e) => setNombreNuevo(e.target.value)}
-        />
-        <input
-          placeholder="Notas (opcional)"
-          value={notasNuevo}
-          onChange={(e) => setNotasNuevo(e.target.value)}
-        />
+        <label style={{ flex: 1, minWidth: 160 }}>
+          Nombre del almacén
+          <input
+            placeholder="Ej. Almacén 1"
+            value={nombreNuevo}
+            onChange={(e) => setNombreNuevo(e.target.value)}
+          />
+        </label>
+        <label style={{ flex: 1, minWidth: 160 }}>
+          Notas (opcional)
+          <input
+            placeholder="Opcional"
+            value={notasNuevo}
+            onChange={(e) => setNotasNuevo(e.target.value)}
+          />
+        </label>
         <button type="submit" disabled={creando || !nombreNuevo.trim()}>
           {creando ? 'Agregando…' : '+ Agregar'}
         </button>
@@ -145,12 +185,18 @@ export function Almacenes() {
               {editingId === a.id ? (
                 <>
                   <div className="almacen-edit-form">
-                    <input value={editNombre} onChange={(e) => setEditNombre(e.target.value)} autoFocus />
-                    <input
-                      value={editNotas}
-                      onChange={(e) => setEditNotas(e.target.value)}
-                      placeholder="Notas (opcional)"
-                    />
+                    <label style={{ flex: 1, minWidth: 120 }}>
+                      Nombre del almacén
+                      <input value={editNombre} onChange={(e) => setEditNombre(e.target.value)} autoFocus />
+                    </label>
+                    <label style={{ flex: 1, minWidth: 120 }}>
+                      Notas (opcional)
+                      <input
+                        value={editNotas}
+                        onChange={(e) => setEditNotas(e.target.value)}
+                        placeholder="Opcional"
+                      />
+                    </label>
                   </div>
                   <div className="almacen-card-actions">
                     <button className="link-btn" onClick={() => handleSaveEdit(a.id)} title="Guardar">

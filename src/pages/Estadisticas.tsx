@@ -21,6 +21,8 @@ interface Conteo {
 
 export function Estadisticas() {
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [reloadKey, setReloadKey] = useState(0)
   const [porAlmacen, setPorAlmacen] = useState<Conteo[]>([])
   const [porCategoria, setPorCategoria] = useState<Conteo[]>([])
   const [timeline, setTimeline] = useState<{ dia: string; cantidad: number }[]>([])
@@ -28,11 +30,25 @@ export function Estadisticas() {
   useEffect(() => {
     let cancelled = false
 
-    supabase
-      .from('materiales')
-      .select('*')
-      .then(({ data }) => {
+    async function load() {
+      setLoading(true)
+      setError(null)
+
+      try {
+        // Renueva el token si venció mientras la pestaña estaba en segundo
+        // plano — de lo contrario la consulta de abajo lo usa vencido, RLS
+        // filtra todas las filas sin dar error, y las gráficas se ven vacías.
+        await supabase.auth.getSession()
+
+        const { data, error } = await supabase.from('materiales').select('*')
         if (cancelled) return
+
+        if (error) {
+          setError(error.message)
+          setLoading(false)
+          return
+        }
+
         const materiales = (data ?? []) as Material[]
 
         const almacenMap = new Map<string, number>()
@@ -63,12 +79,20 @@ export function Estadisticas() {
         )
         setTimeline(dias.map((dia) => ({ dia, cantidad: porDia.get(dia) ?? 0 })))
         setLoading(false)
-      })
+      } catch (e) {
+        // Un fetch que falla a nivel de red dejaba loading en true para
+        // siempre — sin este catch la página no se recuperaba sin recargar.
+        if (cancelled) return
+        setError(e instanceof Error ? e.message : 'No se pudo conectar. Revisa tu conexión e intenta de nuevo.')
+        setLoading(false)
+      }
+    }
 
+    load()
     return () => {
       cancelled = true
     }
-  }, [])
+  }, [reloadKey])
 
   const maxAlmacen = Math.max(1, ...porAlmacen.map((a) => a.cantidad))
   const maxCategoria = Math.max(1, ...porCategoria.map((c) => c.cantidad))
@@ -80,7 +104,18 @@ export function Estadisticas() {
         <h2>Estadísticas</h2>
       </div>
 
-      {loading ? (
+      {error ? (
+        <div className="card state-card error-card">
+          <div className="state-icon error">!</div>
+          <h3 style={{ color: 'var(--danger)' }}>No se pudo cargar el estado</h3>
+          <p>{error}</p>
+          <div className="state-actions">
+            <button type="button" onClick={() => setReloadKey((k) => k + 1)}>
+              Reintentar
+            </button>
+          </div>
+        </div>
+      ) : loading ? (
         <>
           <div className="dashboard-panel" style={{ marginBottom: 16 }}>
             <h3>Registros por día (últimos 14 días)</h3>

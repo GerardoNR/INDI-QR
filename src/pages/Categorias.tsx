@@ -21,21 +21,34 @@ export function Categorias() {
 
   async function load() {
     setLoading(true)
-    const [categoriasRes, materialesRes] = await Promise.all([
-      supabase.from('categorias').select('*').order('nombre'),
-      supabase.from('materiales').select('categoria'),
-    ])
+    setError(null)
+    try {
+      // Renueva el token si venció mientras la pestaña estaba en segundo
+      // plano — de lo contrario las consultas de abajo lo usan vencido,
+      // RLS filtra todas las filas sin dar error, y la lista se ve vacía.
+      await supabase.auth.getSession()
 
-    if (categoriasRes.error) setError(categoriasRes.error.message)
-    else setCategorias(categoriasRes.data ?? [])
+      const [categoriasRes, materialesRes] = await Promise.all([
+        supabase.from('categorias').select('*').order('nombre'),
+        supabase.from('materiales').select('categoria'),
+      ])
 
-    const counts: Record<string, number> = {}
-    for (const { categoria } of materialesRes.data ?? []) {
-      if (!categoria) continue
-      counts[categoria] = (counts[categoria] ?? 0) + 1
+      if (categoriasRes.error) setError(categoriasRes.error.message)
+      else setCategorias(categoriasRes.data ?? [])
+
+      const counts: Record<string, number> = {}
+      for (const { categoria } of materialesRes.data ?? []) {
+        if (!categoria) continue
+        counts[categoria] = (counts[categoria] ?? 0) + 1
+      }
+      setConteos(counts)
+    } catch (e) {
+      // Un fetch que falla a nivel de red dejaba loading en true para
+      // siempre — sin este catch la página no se recuperaba sin recargar.
+      setError(e instanceof Error ? e.message : 'No se pudo conectar. Revisa tu conexión e intenta de nuevo.')
+    } finally {
+      setLoading(false)
     }
-    setConteos(counts)
-    setLoading(false)
   }
 
   useEffect(() => {
@@ -47,6 +60,9 @@ export function Categorias() {
     const nombre = nombreNuevo.trim()
     if (!nombre) return
     setCreando(true)
+    // Renueva el token si venció mientras se llenaba el formulario — de lo
+    // contrario el insert lo rechaza por RLS con un error crudo de Postgres.
+    await supabase.auth.getSession()
     const { data, error } = await supabase
       .from('categorias')
       .insert({ nombre, notas: notasNuevo.trim() || null })
@@ -55,7 +71,13 @@ export function Categorias() {
     setCreando(false)
 
     if (error) {
-      setError(error.message.includes('duplicate') ? `Ya existe una categoría llamada "${nombre}".` : error.message)
+      setError(
+        error.message.includes('duplicate')
+          ? `Ya existe una categoría llamada "${nombre}".`
+          : error.message.toLowerCase().includes('row-level security')
+            ? 'Tu sesión expiró o no es válida. Vuelve a iniciar sesión e intenta de nuevo.'
+            : error.message,
+      )
       return
     }
 
@@ -75,13 +97,20 @@ export function Categorias() {
   async function handleSaveEdit(id: string) {
     const nombre = editNombre.trim()
     if (!nombre) return
+    await supabase.auth.getSession()
     const { error } = await supabase
       .from('categorias')
       .update({ nombre, notas: editNotas.trim() || null })
       .eq('id', id)
 
     if (error) {
-      setError(error.message.includes('duplicate') ? `Ya existe una categoría llamada "${nombre}".` : error.message)
+      setError(
+        error.message.includes('duplicate')
+          ? `Ya existe una categoría llamada "${nombre}".`
+          : error.message.toLowerCase().includes('row-level security')
+            ? 'Tu sesión expiró o no es válida. Vuelve a iniciar sesión e intenta de nuevo.'
+            : error.message,
+      )
       return
     }
 
@@ -95,9 +124,14 @@ export function Categorias() {
 
   async function handleDelete(c: Categoria) {
     if (!confirm(`¿Eliminar la categoría "${c.nombre}"? Los materiales que ya la tengan no se modifican.`)) return
+    await supabase.auth.getSession()
     const { error } = await supabase.from('categorias').delete().eq('id', c.id)
     if (error) {
-      setError(error.message)
+      setError(
+        error.message.toLowerCase().includes('row-level security')
+          ? 'Tu sesión expiró o no es válida. Vuelve a iniciar sesión e intenta de nuevo.'
+          : error.message,
+      )
       return
     }
     setCategorias((prev) => prev.filter((x) => x.id !== c.id))

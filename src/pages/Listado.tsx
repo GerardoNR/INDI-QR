@@ -15,14 +15,27 @@ export function Listado() {
 
   async function load() {
     setLoading(true)
-    const { data, error } = await supabase
-      .from('materiales')
-      .select('*')
-      .order('created_at', { ascending: false })
+    setError(null)
+    try {
+      // Renueva el token si venció mientras la pestaña estaba en segundo
+      // plano — de lo contrario la consulta de abajo lo usa vencido, RLS
+      // filtra todas las filas sin dar error, y la lista se ve vacía.
+      await supabase.auth.getSession()
 
-    if (error) setError(error.message)
-    else setMateriales(data ?? [])
-    setLoading(false)
+      const { data, error } = await supabase
+        .from('materiales')
+        .select('*')
+        .order('created_at', { ascending: false })
+
+      if (error) setError(error.message)
+      else setMateriales(data ?? [])
+    } catch (e) {
+      // Un fetch que falla a nivel de red dejaba loading en true para
+      // siempre — sin este catch la página no se recuperaba sin recargar.
+      setError(e instanceof Error ? e.message : 'No se pudo conectar. Revisa tu conexión e intenta de nuevo.')
+    } finally {
+      setLoading(false)
+    }
   }
 
   useEffect(() => {
@@ -42,9 +55,14 @@ export function Listado() {
   async function handleDelete(id: string) {
     if (!confirm('¿Eliminar este registro?')) return
     const material = materiales.find((m) => m.id === id)
+    await supabase.auth.getSession()
     const { error } = await supabase.from('materiales').delete().eq('id', id)
     if (error) {
-      setError(error.message)
+      setError(
+        error.message.toLowerCase().includes('row-level security')
+          ? 'Tu sesión expiró o no es válida. Vuelve a iniciar sesión e intenta de nuevo.'
+          : error.message,
+      )
       return
     }
     setMateriales((prev) => prev.filter((m) => m.id !== id))
