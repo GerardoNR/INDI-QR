@@ -3,10 +3,36 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 import { useToast } from '../context/ToastContext'
-import { categoryColor } from '../utils/categoryColors'
 import { lookupProducto } from '../utils/lookupProducto'
 
 const SUGGESTED_CATEGORIAS = ['Asfalto', 'Grava', 'Cemento', 'Varilla', 'Concreto', 'Señalización', 'Mezcla asfáltica']
+const UNIDADES_COMUNES = ['pza', 'kg', 'ton', 'l', 'm', 'm³', 'caja', 'rollo']
+
+// Texto completo mostrado en cada chip — el valor guardado en la base de
+// datos sigue siendo la abreviación corta (clave de este objeto).
+const UNIDAD_LABELS: Record<string, string> = {
+  pza: 'Piezas (pza)',
+  kg: 'Kilogramos (kg)',
+  ton: 'Toneladas (ton)',
+  l: 'Litros (l)',
+  m: 'Metros (m)',
+  'm³': 'Metros³ (m³)',
+  caja: 'Caja',
+  rollo: 'Rollo',
+}
+
+// Sugerencia automática de unidad según la categoría elegida — el usuario
+// puede cambiarla libremente después, solo evita el "pza" por defecto para
+// materiales que casi nunca se miden por pieza.
+const UNIDAD_SUGERIDA: Record<string, string> = {
+  Asfalto: 'ton',
+  Grava: 'ton',
+  Cemento: 'ton',
+  Varilla: 'pza',
+  Concreto: 'm³',
+  'Mezcla asfáltica': 'ton',
+  Señalización: 'pza',
+}
 
 export function MaterialForm() {
   const { codigo = '' } = useParams()
@@ -20,51 +46,73 @@ export function MaterialForm() {
   const [isExisting, setIsExisting] = useState(false)
 
   const [nombre, setNombre] = useState('')
-  const [cantidad, setCantidad] = useState(1)
+  const [cantidad, setCantidad] = useState<number | ''>('')
   const [unidad, setUnidad] = useState('pza')
   const [ubicacion, setUbicacion] = useState('')
   const [categoria, setCategoria] = useState('')
   const [notas, setNotas] = useState('')
   const [addingCustomCat, setAddingCustomCat] = useState(false)
+  const [addingCustomUnidad, setAddingCustomUnidad] = useState(false)
   const [buscandoProducto, setBuscandoProducto] = useState(false)
   const [autocompletado, setAutocompletado] = useState(false)
   const [almacenes, setAlmacenes] = useState<string[]>([])
   const [categoriasDb, setCategoriasDb] = useState<string[]>([])
 
   useEffect(() => {
-    supabase
-      .from('almacenes')
-      .select('nombre')
-      .order('nombre')
-      .then(({ data }) => setAlmacenes((data ?? []).map((a) => a.nombre)))
+    // Renueva el token si venció mientras la pestaña estaba en segundo
+    // plano antes de pedir los catálogos — de lo contrario RLS filtra
+    // todas las filas sin dar error y las listas de sugerencias salen vacías.
+    supabase.auth.getSession().then(() => {
+      supabase
+        .from('almacenes')
+        .select('nombre')
+        .order('nombre')
+        .then(({ data }) => setAlmacenes((data ?? []).map((a) => a.nombre)))
 
-    supabase
-      .from('categorias')
-      .select('nombre')
-      .order('nombre')
-      .then(({ data }) => setCategoriasDb((data ?? []).map((c) => c.nombre)))
+      supabase
+        .from('categorias')
+        .select('nombre')
+        .order('nombre')
+        .then(({ data }) => setCategoriasDb((data ?? []).map((c) => c.nombre)))
+    })
   }, [])
 
   useEffect(() => {
     let cancelled = false
-    setLoading(true)
-    setAutocompletado(false)
 
-    supabase
-      .from('materiales')
-      .select('*')
-      .eq('codigo', codigo)
-      .maybeSingle()
-      .then(({ data, error }) => {
+    async function load() {
+      setLoading(true)
+      setError(null)
+      setAutocompletado(false)
+
+      try {
+        // Se dispara ya mismo, en paralelo con la consulta a "materiales" de
+        // abajo, en vez de esperar a que esa termine para empezar — así el
+        // nombre autocompletado llega tan rápido como lo permita Open Food
+        // Facts, sin sumarle la latencia de la consulta a Supabase encima.
+        // Si el código ya existe en "materiales" no se usa (se descarta solo).
+        setBuscandoProducto(true)
+        const productoPromise = lookupProducto(codigo)
+
+        // Si el token de acceso quedó vencido (p. ej. la pestaña estuvo en
+        // segundo plano y el refresco automático no alcanzó a correr),
+        // esto lo renueva antes de seguir. Sin esto, la consulta de abajo
+        // usa un token vencido, RLS filtra todas las filas sin dar error,
+        // y un material que sí existe se muestra como "nuevo".
+        await supabase.auth.getSession()
+
+        const { data, error } = await supabase.from('materiales').select('*').eq('codigo', codigo).maybeSingle()
         if (cancelled) return
         setLoading(false)
 
         if (error) {
+          setBuscandoProducto(false)
           setError(error.message)
           return
         }
 
         if (data) {
+          setBuscandoProducto(false)
           setIsExisting(true)
           setNombre(data.nombre)
           setCantidad(data.cantidad)
@@ -76,26 +124,50 @@ export function MaterialForm() {
           return
         }
 
-        setBuscandoProducto(true)
-        lookupProducto(codigo).then((producto) => {
-          if (cancelled) return
-          setBuscandoProducto(false)
-          if (producto.nombre) {
-            setNombre(producto.nombre)
-            setAutocompletado(true)
-          }
-        })
-      })
+        const producto = await productoPromise
+        if (cancelled) return
+        setBuscandoProducto(false)
+        if (producto.nombre) {
+          setNombre(producto.nombre)
+          setAutocompletado(true)
+        }
+      } catch (e) {
+        // Un fetch que falla a nivel de red dejaba loading en true para
+        // siempre — sin este catch la página se quedaba en "Buscando
+        // código…" y no se recuperaba sin recargar.
+        if (cancelled) return
+        setError(e instanceof Error ? e.message : 'No se pudo conectar. Revisa tu conexión e intenta de nuevo.')
+        setLoading(false)
+        setBuscandoProducto(false)
+      }
+    }
 
+    load()
     return () => {
       cancelled = true
     }
-  }, [codigo])
+  }, [codigo, showToast])
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault()
-    setSaving(true)
     setError(null)
+
+    if (cantidad === '') {
+      setError('Ingresa la cantidad.')
+      return
+    }
+
+    // La política RLS de "materiales" exige una sesión autenticada válida.
+    // Si el token quedó vencido/roto (ej. por un reloj de sistema
+    // desincronizado), mejor detectarlo aquí con un mensaje claro que dejar
+    // que el insert falle con el error crudo de Postgres.
+    const { data: sessionCheck } = await supabase.auth.getSession()
+    if (!sessionCheck.session) {
+      setError('Tu sesión expiró o no es válida. Vuelve a iniciar sesión e intenta de nuevo.')
+      return
+    }
+
+    setSaving(true)
 
     const { error } = await supabase.from('materiales').upsert(
       {
@@ -114,7 +186,11 @@ export function MaterialForm() {
     setSaving(false)
 
     if (error) {
-      setError(error.message)
+      setError(
+        error.message.toLowerCase().includes('row-level security')
+          ? 'Tu sesión expiró o no es válida. Vuelve a iniciar sesión e intenta de nuevo.'
+          : error.message,
+      )
       return
     }
 
@@ -136,6 +212,10 @@ export function MaterialForm() {
     ? [...baseCategorias, categoria]
     : baseCategorias
 
+  const unidadChips = unidad && !UNIDADES_COMUNES.includes(unidad)
+    ? [...UNIDADES_COMUNES, unidad]
+    : UNIDADES_COMUNES
+
   return (
     <div className="form-page">
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 4 }}>
@@ -148,81 +228,123 @@ export function MaterialForm() {
 
       <form onSubmit={handleSubmit}>
         <div className="form-grid">
-          <label className="full">
-            Nombre del material
-            <input
-              required
-              value={nombre}
-              onChange={(e) => {
-                setNombre(e.target.value)
-                setAutocompletado(false)
-              }}
-              autoFocus
-            />
-          </label>
-          {(buscandoProducto || autocompletado) && (
-            <p className="full hint" style={{ marginTop: -8 }}>
-              {buscandoProducto
-                ? 'Buscando el producto por su código de barras…'
-                : '✓ Nombre autocompletado desde el código de barras — puedes editarlo si hace falta.'}
-            </p>
-          )}
+          <div className="form-section">
+            <label>
+              Nombre del material
+              <input
+                required
+                placeholder='Ej. Varilla corrugada 3/8"'
+                value={nombre}
+                onChange={(e) => {
+                  setNombre(e.target.value)
+                  setAutocompletado(false)
+                }}
+                autoFocus
+              />
+            </label>
+            {(buscandoProducto || autocompletado) && (
+              <p className="hint">
+                {buscandoProducto
+                  ? 'Buscando el producto por su código de barras…'
+                  : '✓ Nombre autocompletado desde el código de barras — puedes editarlo si hace falta.'}
+              </p>
+            )}
+          </div>
 
-          <label>
-            Cantidad
-            <input
-              type="number"
-              min={0}
-              step="any"
-              required
-              value={cantidad}
-              onChange={(e) => setCantidad(Number(e.target.value))}
-            />
-          </label>
+          <div className="form-section">
+            <span className="field-label">Cantidad y unidad</span>
+            <div className="cantidad-unidad-row">
+              <label className="cantidad-field">
+                Cantidad
+                <input
+                  type="number"
+                  className="cantidad-input"
+                  min={0}
+                  step="any"
+                  required
+                  placeholder="0"
+                  value={cantidad}
+                  onChange={(e) => setCantidad(e.target.value === '' ? '' : Number(e.target.value))}
+                />
+              </label>
 
-          <label>
-            Unidad
-            <input value={unidad} onChange={(e) => setUnidad(e.target.value)} placeholder="pza, kg, m, caja…" />
-          </label>
+              <div className="unidad-field">
+                <span className="field-label">Unidad</span>
+                <div className="cat-picker">
+                  {unidadChips.map((u) => (
+                    <button
+                      key={u}
+                      type="button"
+                      className={`cat-chip${unidad === u ? ' selected' : ''}`}
+                      onClick={() => {
+                        setUnidad(u)
+                        setAddingCustomUnidad(false)
+                      }}
+                    >
+                      {UNIDAD_LABELS[u] ?? u}
+                    </button>
+                  ))}
+                  <button
+                    type="button"
+                    className="cat-chip"
+                    onClick={() => {
+                      if (addingCustomUnidad) {
+                        setAddingCustomUnidad(false)
+                        if (!UNIDADES_COMUNES.includes(unidad)) setUnidad('')
+                      } else {
+                        setAddingCustomUnidad(true)
+                      }
+                    }}
+                  >
+                    {addingCustomUnidad ? 'Cancelar' : '+ otra'}
+                  </button>
+                </div>
+                {addingCustomUnidad && (
+                  <input
+                    autoFocus
+                    placeholder="Unidad personalizada"
+                    value={unidad}
+                    onChange={(e) => setUnidad(e.target.value)}
+                  />
+                )}
+              </div>
+            </div>
+          </div>
 
-          <label>
-            Ubicación
-            <input
-              list="almacenes-datalist"
-              value={ubicacion}
-              onChange={(e) => setUbicacion(e.target.value)}
-              placeholder="Elige o escribe un almacén…"
-            />
-            <datalist id="almacenes-datalist">
-              {almacenes.map((nombre) => (
-                <option key={nombre} value={nombre} />
-              ))}
-            </datalist>
-          </label>
-
-          <div className="full">
-            <label style={{ marginBottom: 8 }}>Categoría</label>
+          <div className="form-section">
+            <span className="field-label">Categoría</span>
             <div className="cat-picker">
               {catChips.map((c) => {
                 const selected = categoria === c
-                const { bg, fg } = categoryColor(c)
                 return (
                   <button
                     key={c}
                     type="button"
                     className={`cat-chip${selected ? ' selected' : ''}`}
-                    style={selected ? { background: bg, color: fg, borderColor: fg } : undefined}
                     onClick={() => {
                       setCategoria(c)
                       setAddingCustomCat(false)
+                      const sugerida = UNIDAD_SUGERIDA[c]
+                      if (sugerida) setUnidad(sugerida)
                     }}
                   >
                     {c}
                   </button>
                 )
               })}
-              <button type="button" className="cat-chip" onClick={() => setAddingCustomCat(true)}>
-                + nueva
+              <button
+                type="button"
+                className="cat-chip"
+                onClick={() => {
+                  if (addingCustomCat) {
+                    setAddingCustomCat(false)
+                    if (!baseCategorias.includes(categoria)) setCategoria('')
+                  } else {
+                    setAddingCustomCat(true)
+                  }
+                }}
+              >
+                {addingCustomCat ? 'Cancelar' : '+ nueva'}
               </button>
             </div>
             {addingCustomCat && (
@@ -235,10 +357,35 @@ export function MaterialForm() {
             )}
           </div>
 
-          <label className="full">
-            Notas
-            <textarea value={notas} onChange={(e) => setNotas(e.target.value)} rows={3} />
-          </label>
+          <div className="form-section">
+            <label>
+              Ubicación
+              <input
+                list="almacenes-datalist"
+                value={ubicacion}
+                onChange={(e) => setUbicacion(e.target.value)}
+                placeholder="Elige o escribe un almacén…"
+              />
+              <datalist id="almacenes-datalist">
+                {almacenes.map((nombre) => (
+                  <option key={nombre} value={nombre} />
+                ))}
+              </datalist>
+            </label>
+            {almacenes.length === 0 && (
+              <span className="hint hint-notice">
+                <span className="hint-notice-icon">!</span>
+                Aún no tienes almacenes registrados — agrégalos en la sección Almacenes.
+              </span>
+            )}
+          </div>
+
+          <div className="form-section">
+            <label>
+              Notas
+              <textarea value={notas} onChange={(e) => setNotas(e.target.value)} rows={3} />
+            </label>
+          </div>
         </div>
 
         {error && <p className="auth-error">{error}</p>}
@@ -248,7 +395,7 @@ export function MaterialForm() {
             Cancelar / seguir escaneando
           </button>
           <button type="submit" disabled={saving}>
-            {saving ? 'Guardando…' : isExisting ? 'Guardar cambios' : 'Registrar'}
+            {saving ? 'Guardando…' : isExisting ? 'Actualizar' : 'Registrar'}
           </button>
         </div>
       </form>

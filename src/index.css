@@ -1158,6 +1158,14 @@ label {
 }
 
 /* Form */
+.form-page {
+  /* Un formulario de una sola columna se vuelve difícil de escanear si se
+     estira a todo el ancho de .app-main (960px) — se centra en un ancho
+     cómodo de lectura, en vez de dejarlo pegado a la izquierda. */
+  max-width: 640px;
+  margin: 0 auto;
+}
+
 .form-page .status-badge {
   margin-left: 10px;
 }
@@ -1170,33 +1178,100 @@ label {
 .form-grid {
   display: flex;
   flex-direction: column;
+  gap: 22px;
 }
 
-@media (min-width: 720px) {
-  .form-grid {
-    display: grid;
-    grid-template-columns: 2fr 1fr 1fr;
-    gap: 0 16px;
-    align-items: start;
-  }
+/* Dentro de una sección del formulario, el espaciado entre bloques lo da
+   el gap de .form-grid — se anula el margin-bottom nativo de <label> para
+   que ninguna sección quede con más aire que las demás. */
+.form-section label {
+  margin-bottom: 0;
+}
 
-  .form-grid .full {
-    grid-column: 1 / -1;
-  }
+.form-section .hint {
+  margin-top: 8px;
+  margin-bottom: 0;
+}
+
+/* Aviso que sí quiere notarse (falta configurar algo) pero sin la
+   gravedad visual de un error — mismo tono azul de marca que el resto de
+   los mensajes informativos de la app, solo con un ícono para destacarlo. */
+.hint-notice {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--acc);
+}
+
+.hint-notice-icon {
+  display: inline-grid;
+  place-items: center;
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  background: var(--acc-soft);
+  color: var(--acc);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.field-label {
+  display: block;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 8px;
+}
+
+.cantidad-unidad-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 16px;
+}
+
+.cantidad-field {
+  flex: 0 0 auto;
+}
+
+.cantidad-input {
+  /* Ancho compacto (~15 dígitos) en vez de estirarse a todo el ancho de
+     la columna, con las flechitas nativas del navegador visibles. El
+     padding horizontal (14px de cada lado) se suma aparte para que los
+     15 caracteres completos quepan sin recortarse. */
+  width: calc(15ch + 28px + 3px);
+  max-width: 100%;
+  -webkit-appearance: auto;
+  appearance: auto;
+}
+
+.cantidad-input::-webkit-inner-spin-button,
+.cantidad-input::-webkit-outer-spin-button {
+  -webkit-appearance: auto;
+  opacity: 1;
+}
+
+.unidad-field {
+  flex: 1 1 240px;
+  min-width: 220px;
 }
 
 .cat-picker {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
-  margin-bottom: 14px;
+}
+
+.cat-picker + input {
+  margin-top: 10px;
 }
 
 .form-actions {
   display: flex;
   justify-content: space-between;
   gap: 12px;
-  margin-top: 8px;
+  margin-top: 22px;
 }
 
 /* Listado */
