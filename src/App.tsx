@@ -4,7 +4,11 @@ import { ToastProvider } from './context/ToastContext'
 import { ThemeProvider } from './context/ThemeContext'
 import { ProtectedRoute } from './components/ProtectedRoute'
 import { NavBar } from './components/NavBar'
+import { OfflineBanner } from './components/OfflineBanner'
 import { Login } from './pages/Login'
+import { Restablecer } from './pages/Restablecer'
+import { Terminos } from './pages/Terminos'
+import { Privacidad } from './pages/Privacidad'
 import { Scanner } from './pages/Scanner'
 import { MaterialForm } from './pages/MaterialForm'
 import { Listado } from './pages/Listado'
@@ -33,11 +37,15 @@ function AppShell() {
 
   return (
     <>
+      <OfflineBanner />
       <NavBar />
       <main className="app-main">
         <div className="page-enter" key={pathname}>
           <Routes>
             <Route path="/login" element={<Login />} />
+            <Route path="/restablecer" element={<Restablecer />} />
+            <Route path="/terminos" element={<Terminos />} />
+            <Route path="/privacidad" element={<Privacidad />} />
             <Route
               path="/"
               element={

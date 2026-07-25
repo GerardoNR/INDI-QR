@@ -2,67 +2,129 @@ import { useRef, useState, type FormEvent } from 'react'
 import { Navigate, useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
+import { translateAuthError } from '../utils/authErrors'
+import { EyeIcon, EyeOffIcon } from '../components/AuthIcons'
+import { PasswordStrengthMeter } from '../components/PasswordStrengthMeter'
+import {
+  domainAcceptsMail,
+  formatTelefono,
+  isPasswordAcceptable,
+  isValidEmail,
+  isValidPhone,
+  sanitizeNombre,
+} from '../utils/validation'
 
-function EyeIcon() {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M2 12s3.8-7 10-7 10 7 10 7-3.8 7-10 7-10-7-10-7Z" />
-      <circle cx="12" cy="12" r="3" />
-    </svg>
-  )
-}
+type Mode = 'login' | 'signup' | 'forgot'
 
-function EyeOffIcon() {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M9.6 5.3A10.6 10.6 0 0 1 12 5c6.2 0 10 7 10 7a13.6 13.6 0 0 1-3.05 3.9M6.3 6.7C3.6 8.5 2 12 2 12s3.8 7 10 7c1.4 0 2.66-.36 3.75-.9" />
-      <path d="M9.9 9.9a3 3 0 0 0 4.2 4.2" />
-      <path d="M3 3l18 18" />
-    </svg>
-  )
-}
-
-// Supabase/GoTrue devuelve estos mensajes en inglés y a veces poco claros
-// para alguien que no conoce la API — se traducen los más comunes.
-function translateAuthError(message: string): string {
-  const m = message.toLowerCase()
-  if (m.includes('invalid login credentials')) return 'Correo o contraseña incorrectos.'
-  if (m.includes('email not confirmed')) return 'Debes confirmar tu correo antes de iniciar sesión. Revisa tu bandeja de entrada.'
-  if (m.includes('already registered') || m.includes('already exists')) return 'Ya existe una cuenta con ese correo. Intenta iniciar sesión.'
-  if (m.includes('password should be at least')) return 'La contraseña debe tener al menos 6 caracteres.'
-  if (m.includes('rate limit exceeded')) return 'Se alcanzó el límite de correos de confirmación del proyecto. Espera unos minutos e intenta de nuevo.'
-  if (m.includes('is invalid')) return 'Ese correo no es válido. Revisa que esté bien escrito.'
-  if (m.includes('signups not allowed') || m.includes('signup is disabled')) return 'La creación de cuentas está deshabilitada en este proyecto.'
-  return message
-}
+type FieldErrors = Partial<Record<'nombre' | 'telefono' | 'email' | 'password' | 'terminos', boolean>>
 
 export function Login() {
   const { session } = useAuth()
   const navigate = useNavigate()
-  const [mode, setMode] = useState<'login' | 'signup'>('login')
+  const [mode, setMode] = useState<Mode>('login')
+
   const [nombre, setNombre] = useState('')
+  const [telefono, setTelefono] = useState('')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [aceptaTerminos, setAceptaTerminos] = useState(false)
   const [showPassword, setShowPassword] = useState(false)
+
+  const [forgotEmail, setForgotEmail] = useState('')
+  const [forgotEmailError, setForgotEmailError] = useState(false)
+
   const [error, setError] = useState<string | null>(null)
   const [info, setInfo] = useState<string | null>(null)
+  const [fieldErrors, setFieldErrors] = useState<FieldErrors>({})
   const [busy, setBusy] = useState(false)
   const submittingRef = useRef(false)
+  // Si el proyecto tiene "Confirm email" desactivado, signUp() deja una
+  // sesión activa por un instante antes de que se alcance a llamar
+  // signOut() para cerrarla — sin esto, ese instante bastaba para que
+  // "if (session) return <Navigate>" sacara a Login de la pantalla y
+  // volviera a montarlo de cero al cerrar sesión, perdiendo el mensaje de
+  // "Cuenta creada" que se acababa de mostrar.
+  const suppressRedirectRef = useRef(false)
 
-  if (session) return <Navigate to="/" replace />
+  if (session && !suppressRedirectRef.current) return <Navigate to="/" replace />
 
   function clearMessages() {
     setError(null)
     setInfo(null)
   }
 
+  function goToMode(next: Mode) {
+    setMode(next)
+    clearMessages()
+    setFieldErrors({})
+    setForgotEmailError(false)
+  }
+
   async function handleSubmit(e: FormEvent) {
     e.preventDefault()
     if (submittingRef.current) return
     submittingRef.current = true
-
     clearMessages()
+
+    // Antes de tocar red: valida lo que ya se puede validar localmente, y
+    // detecta sin conexión de una — así el usuario no espera un timeout de
+    // fetch para enterarse de que no hay internet.
+    if (!navigator.onLine) {
+      setError('No tienes conexión a internet. Conéctate e intenta de nuevo.')
+      submittingRef.current = false
+      return
+    }
+
+    // Se revisan todos los campos de una sola pasada (en vez de cortar en el
+    // primer error) para poder marcar en rojo TODOS los que faltan a la vez,
+    // no solo el primero.
+    const checks: Array<[keyof FieldErrors, boolean, string]> = [
+      ['email', !isValidEmail(email), 'Ingresa un correo válido.'],
+    ]
+    if (mode === 'signup') {
+      checks.push(
+        ['nombre', !nombre.trim(), 'Ingresa tu nombre.'],
+        ['telefono', !isValidPhone(telefono), 'Ingresa un teléfono válido (10 dígitos).'],
+        ['password', !isPasswordAcceptable(password), 'Tu contraseña es muy débil. Hazla más segura (barra de abajo).'],
+        ['terminos', !aceptaTerminos, 'Debes aceptar los Términos y Condiciones y el Aviso de Privacidad para crear tu cuenta.'],
+      )
+    }
+
+    const errors: FieldErrors = {}
+    let firstMessage: string | null = null
+    for (const [key, failed, message] of checks) {
+      if (failed) {
+        errors[key] = true
+        firstMessage ??= message
+      }
+    }
+
+    if (firstMessage) {
+      setFieldErrors(errors)
+      setError(firstMessage)
+      submittingRef.current = false
+      return
+    }
+    setFieldErrors({})
     setBusy(true)
+
+    // Solo al crear cuenta vale la pena pagar el costo de un DNS lookup: en
+    // login la cuenta ya existe (revisarla aquí solo agregaría latencia sin
+    // prevenir nada), pero al registrarse evita cuentas con un dominio
+    // inventado o mal escrito al que nunca va a llegar un correo real.
+    if (mode === 'signup' && !(await domainAcceptsMail(email))) {
+      setFieldErrors({ email: true })
+      setError('Ese dominio de correo no existe. Verifica que esté bien escrito.')
+      submittingRef.current = false
+      setBusy(false)
+      return
+    }
+
+    // Se activa antes de llamar signUp(): en cuanto esa promesa resuelve
+    // (con "Confirm email" desactivado en el proyecto) ya hay una sesión
+    // activa y el listener de AuthContext puede reaccionar antes de que
+    // esta misma función alcance a llamar signOut() más abajo.
+    if (mode === 'signup') suppressRedirectRef.current = true
 
     try {
       const { error } =
@@ -71,7 +133,9 @@ export function Login() {
           : await supabase.auth.signUp({
               email,
               password,
-              options: { data: { nombre: nombre.trim() } },
+              // Se guardan solo los 10 dígitos (sin los espacios del
+              // formato visual) — más útil después para marcar/enlazar.
+              options: { data: { nombre: nombre.trim(), telefono: telefono.replace(/\D/g, '') } },
             })
 
       if (error) {
@@ -87,6 +151,8 @@ export function Login() {
         setInfo('Cuenta creada. Revisa tu correo si se pide confirmación, luego inicia sesión.')
         setMode('login')
         setNombre('')
+        setTelefono('')
+        setAceptaTerminos(false)
       } else {
         // No basta con esperar a que el listener de AuthContext propague la
         // sesión: si ese evento se retrasa (red lenta, pestaña en segundo
@@ -96,6 +162,56 @@ export function Login() {
         // una vez lo hace inmediato sin depender de ese evento.
         navigate('/', { replace: true })
       }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'No se pudo conectar. Revisa tu conexión e intenta de nuevo.')
+    } finally {
+      submittingRef.current = false
+      setBusy(false)
+      suppressRedirectRef.current = false
+    }
+  }
+
+  async function handleForgotSubmit(e: FormEvent) {
+    e.preventDefault()
+    if (submittingRef.current) return
+    submittingRef.current = true
+    clearMessages()
+
+    if (!navigator.onLine) {
+      setError('No tienes conexión a internet. Conéctate e intenta de nuevo.')
+      submittingRef.current = false
+      return
+    }
+    if (!isValidEmail(forgotEmail)) {
+      setError('Ingresa un correo válido.')
+      setForgotEmailError(true)
+      submittingRef.current = false
+      return
+    }
+
+    setBusy(true)
+
+    if (!(await domainAcceptsMail(forgotEmail))) {
+      setForgotEmailError(true)
+      setError('Ese dominio de correo no existe. Verifica que esté bien escrito.')
+      submittingRef.current = false
+      setBusy(false)
+      return
+    }
+
+    try {
+      const { error } = await supabase.auth.resetPasswordForEmail(forgotEmail.trim(), {
+        redirectTo: `${window.location.origin}/restablecer`,
+      })
+
+      if (error) {
+        setError(translateAuthError(error.message))
+        return
+      }
+
+      setInfo('Revisa tu correo — te enviamos un enlace para restablecer tu contraseña.')
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'No se pudo conectar. Revisa tu conexión e intenta de nuevo.')
     } finally {
       submittingRef.current = false
       setBusy(false)
@@ -122,88 +238,171 @@ export function Login() {
           </div>
         </div>
 
-        <form className="card auth-card" onSubmit={handleSubmit}>
-          <img src="/logo-indi.png" alt="" className="auth-card-logo" />
-          <h1>Bienvenido a INDI QR</h1>
-          <p className="auth-subtitle">Escanea y registra material de construcción en segundos.</p>
+        {mode === 'forgot' ? (
+          <form className="card auth-card" onSubmit={handleForgotSubmit} noValidate>
+            <img src="/logo-indi.png" alt="" className="auth-card-logo" />
+            <h1>Recuperar contraseña</h1>
+            <p className="auth-subtitle">Ingresa tu correo y te mandamos un enlace para restablecerla.</p>
 
-          <div className="auth-tabs">
-            <button
-              type="button"
-              className={mode === 'login' ? 'active' : ''}
-              onClick={() => {
-                setMode('login')
-                clearMessages()
-              }}
-            >
-              Iniciar sesión
-            </button>
-            <button
-              type="button"
-              className={mode === 'signup' ? 'active' : ''}
-              onClick={() => {
-                setMode('signup')
-                clearMessages()
-              }}
-            >
-              Crear cuenta
-            </button>
-          </div>
-
-          {mode === 'signup' && (
             <label>
-              Nombre
+              Correo
               <input
-                type="text"
+                type="email"
                 required
-                value={nombre}
-                onChange={(e) => setNombre(e.target.value)}
-                autoComplete="name"
+                className={forgotEmailError ? 'field-error' : undefined}
+                value={forgotEmail}
+                onChange={(e) => {
+                  setForgotEmail(e.target.value)
+                  setForgotEmailError(false)
+                }}
+                autoComplete="email"
+                autoFocus
               />
             </label>
-          )}
 
-          <label>
-            Correo
-            <input
-              type="email"
-              required
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              autoComplete="email"
-            />
-          </label>
+            {error && <p className="auth-error">{error}</p>}
+            {info && <p className="auth-info">{info}</p>}
 
-          <label>
-            Contraseña
-            <div className="password-field">
-              <input
-                type={showPassword ? 'text' : 'password'}
-                required
-                minLength={6}
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
-              />
-              <button
-                type="button"
-                className="password-toggle"
-                onClick={() => setShowPassword((v) => !v)}
-                aria-label={showPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'}
-                tabIndex={-1}
-              >
-                {showPassword ? <EyeOffIcon /> : <EyeIcon />}
+            <button type="submit" disabled={busy}>
+              {busy ? 'Enviando…' : 'Enviar enlace'}
+            </button>
+            <button type="button" className="link-btn auth-back-link" onClick={() => goToMode('login')}>
+              ← Volver a iniciar sesión
+            </button>
+          </form>
+        ) : (
+          <form className="card auth-card" onSubmit={handleSubmit} noValidate>
+            <img src="/logo-indi.png" alt="" className="auth-card-logo" />
+            <h1>Bienvenido a INDI QR</h1>
+            <p className="auth-subtitle">Escanea y registra material de construcción en segundos.</p>
+
+            <div className="auth-tabs">
+              <button type="button" className={mode === 'login' ? 'active' : ''} onClick={() => goToMode('login')}>
+                Iniciar sesión
+              </button>
+              <button type="button" className={mode === 'signup' ? 'active' : ''} onClick={() => goToMode('signup')}>
+                Crear cuenta
               </button>
             </div>
-          </label>
 
-          {error && <p className="auth-error">{error}</p>}
-          {info && <p className="auth-info">{info}</p>}
+            {mode === 'signup' && (
+              <>
+                <label>
+                  Nombre
+                  <input
+                    type="text"
+                    required
+                    className={fieldErrors.nombre ? 'field-error' : undefined}
+                    value={nombre}
+                    onChange={(e) => {
+                      setNombre(sanitizeNombre(e.target.value))
+                      setFieldErrors((f) => ({ ...f, nombre: false }))
+                    }}
+                    autoComplete="name"
+                  />
+                </label>
 
-          <button type="submit" disabled={busy}>
-            {busy ? 'Un momento…' : mode === 'login' ? 'Entrar' : 'Crear cuenta'}
-          </button>
-        </form>
+                <label>
+                  Teléfono
+                  <input
+                    type="tel"
+                    required
+                    placeholder="551 234 5678"
+                    className={fieldErrors.telefono ? 'field-error' : undefined}
+                    value={telefono}
+                    onChange={(e) => {
+                      setTelefono(formatTelefono(e.target.value))
+                      setFieldErrors((f) => ({ ...f, telefono: false }))
+                    }}
+                    autoComplete="tel"
+                    inputMode="numeric"
+                    maxLength={12}
+                  />
+                </label>
+              </>
+            )}
+
+            <label>
+              Correo
+              <input
+                type="email"
+                required
+                className={fieldErrors.email ? 'field-error' : undefined}
+                value={email}
+                onChange={(e) => {
+                  setEmail(e.target.value)
+                  setFieldErrors((f) => ({ ...f, email: false }))
+                }}
+                autoComplete="email"
+              />
+            </label>
+
+            <label>
+              Contraseña
+              <div className="password-field">
+                <input
+                  type={showPassword ? 'text' : 'password'}
+                  required
+                  minLength={6}
+                  className={fieldErrors.password ? 'field-error' : undefined}
+                  value={password}
+                  onChange={(e) => {
+                    setPassword(e.target.value)
+                    setFieldErrors((f) => ({ ...f, password: false }))
+                  }}
+                  autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
+                />
+                <button
+                  type="button"
+                  className="password-toggle"
+                  onClick={() => setShowPassword((v) => !v)}
+                  aria-label={showPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'}
+                  tabIndex={-1}
+                >
+                  {showPassword ? <EyeOffIcon /> : <EyeIcon />}
+                </button>
+              </div>
+            </label>
+            {mode === 'signup' && <PasswordStrengthMeter password={password} />}
+
+            {mode === 'login' && (
+              <button
+                type="button"
+                className="link-btn auth-forgot-link"
+                onClick={() => {
+                  setForgotEmail(email)
+                  goToMode('forgot')
+                }}
+              >
+                ¿Olvidaste tu contraseña?
+              </button>
+            )}
+
+            {mode === 'signup' && (
+              <label className={`checkbox-field${fieldErrors.terminos ? ' checkbox-field-error' : ''}`}>
+                <input
+                  type="checkbox"
+                  checked={aceptaTerminos}
+                  onChange={(e) => {
+                    setAceptaTerminos(e.target.checked)
+                    setFieldErrors((f) => ({ ...f, terminos: false }))
+                  }}
+                />
+                <span>
+                  Acepto los <a href="/terminos" target="_blank" rel="noreferrer">Términos y Condiciones</a> y el{' '}
+                  <a href="/privacidad" target="_blank" rel="noreferrer">Aviso de Privacidad</a>.
+                </span>
+              </label>
+            )}
+
+            {error && <p className="auth-error">{error}</p>}
+            {info && <p className="auth-info">{info}</p>}
+
+            <button type="submit" disabled={busy}>
+              {busy ? 'Un momento…' : mode === 'login' ? 'Entrar' : 'Crear cuenta'}
+            </button>
+          </form>
+        )}
       </div>
     </div>
   )

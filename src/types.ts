@@ -33,3 +33,11 @@ export interface Categoria {
 }
 
 export type CategoriaInput = Omit<Categoria, 'id' | 'created_at' | 'updated_at'>
+
+export interface Perfil {
+  id: string
+  nombre: string | null
+  telefono: string | null
+  email: string | null
+  created_at: string
+}

@@ -123,3 +123,59 @@ create policy "categorias_update_auth" on categorias
 drop policy if exists "categorias_delete_auth" on categorias;
 create policy "categorias_delete_auth" on categorias
   for delete using (auth.role() = 'authenticated');
+
+-- Perfiles: datos adicionales de cada usuario que Supabase Auth no guarda
+-- directamente (nombre, teléfono) — se llenan solos al registrarse, vía el
+-- trigger de más abajo, tomando el metadata que manda signUp().
+create table if not exists perfiles (
+  id uuid primary key references auth.users (id) on delete cascade,
+  nombre text,
+  telefono text,
+  email text,
+  created_at timestamptz not null default now()
+);
+
+alter table perfiles enable row level security;
+
+-- A diferencia de las demás tablas (compartidas entre todo el equipo), un
+-- perfil es privado: cada quien solo ve/edita el suyo.
+drop policy if exists "perfiles_select_own" on perfiles;
+create policy "perfiles_select_own" on perfiles
+  for select using (auth.uid() = id);
+
+drop policy if exists "perfiles_update_own" on perfiles;
+create policy "perfiles_update_own" on perfiles
+  for update using (auth.uid() = id);
+
+drop policy if exists "perfiles_insert_own" on perfiles;
+create policy "perfiles_insert_own" on perfiles
+  for insert with check (auth.uid() = id);
+
+-- Trigger: al crearse un usuario en auth.users, crea su fila en "perfiles"
+-- tomando nombre/telefono del metadata que mandó signUp(). security definer
+-- porque el trigger corre sobre auth.users (fuera del control del usuario) y
+-- necesita permiso para escribir en perfiles saltándose la política de
+-- arriba (que exige auth.uid() = id, y en este punto aún no hay sesión).
+create or replace function handle_new_user()
+returns trigger
+language plpgsql
+security definer set search_path = public
+as $$
+begin
+  insert into public.perfiles (id, nombre, telefono, email)
+  values (
+    new.id,
+    new.raw_user_meta_data ->> 'nombre',
+    new.raw_user_meta_data ->> 'telefono',
+    new.email
+  )
+  on conflict (id) do nothing;
+  return new;
+end;
+$$;
+
+drop trigger if exists on_auth_user_created on auth.users;
+create trigger on_auth_user_created
+  after insert on auth.users
+  for each row
+  execute function handle_new_user();

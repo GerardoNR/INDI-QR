@@ -13,4 +13,12 @@ export const supabase = createClient(url || 'https://placeholder.supabase.co', a
     // hasta recargar la página a la fuerza.
     fetch: (input, init) => fetch(input, { ...init, cache: 'no-store' }),
   },
+  auth: {
+    // Esto ya es el default de supabase-js (guarda la sesión en
+    // localStorage y la renueva sola en segundo plano) — se deja explícito
+    // para que quede claro que la sesión sobrevive a cerrar la app/pestaña,
+    // sin depender de que nadie cambie esto sin darse cuenta más adelante.
+    persistSession: true,
+    autoRefreshToken: true,
+  },
 })

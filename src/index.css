@@ -23,6 +23,9 @@
   --danger-bg: rgba(255, 107, 107, 0.12);
   --danger-border: rgba(255, 107, 107, 0.32);
 
+  --warn: #f5a623;
+  --success: #2fbf71;
+
   --shadow-card: 0 24px 60px -24px rgba(0, 0, 0, 0.75);
   --shadow-float: 0 10px 26px rgba(1, 101, 247, 0.35);
 
@@ -761,6 +764,73 @@ label {
   margin-bottom: 12px;
 }
 
+.password-strength {
+  margin: 0 0 12px;
+}
+
+.password-strength-hint {
+  font-size: 12.5px;
+  color: var(--text);
+  margin: 0 0 6px;
+}
+
+.password-strength-track {
+  height: 6px;
+  border-radius: 4px;
+  background: var(--border-input);
+  overflow: hidden;
+}
+
+.password-strength-fill {
+  height: 100%;
+  border-radius: 4px;
+  transition: width 0.2s ease, background-color 0.2s ease;
+  width: 0%;
+}
+
+.password-strength-fill.weak {
+  width: 33%;
+  background: var(--danger);
+}
+
+.password-strength-fill.medium {
+  width: 66%;
+  background: var(--warn);
+}
+
+.password-strength-fill.strong {
+  width: 100%;
+  background: var(--success);
+}
+
+.password-strength-label {
+  display: inline-block;
+  font-size: 12px;
+  font-weight: 700;
+  margin-top: 5px;
+}
+
+.password-strength-label.weak {
+  color: var(--danger);
+}
+
+.password-strength-label.medium {
+  color: var(--warn);
+}
+
+.password-strength-label.strong {
+  color: var(--success);
+}
+
+.field-error {
+  border-color: var(--danger) !important;
+  box-shadow: 0 0 0 3px var(--danger-bg) !important;
+}
+
+.checkbox-field-error span {
+  color: var(--danger);
+}
+
 .page-loading {
   text-align: center;
   padding: 40px 0;
@@ -1140,6 +1210,97 @@ label {
 
 .auth-tabs button:hover:not(:disabled) {
   background: var(--bg);
+}
+
+.auth-forgot-link {
+  align-self: flex-end;
+  margin: -6px 0 14px;
+  font-size: 13px;
+}
+
+.auth-back-link {
+  align-self: center;
+  margin-top: 14px;
+  font-size: 13.5px;
+}
+
+/* Checkbox de Términos/Privacidad — nativo (con accent-color) en vez de un
+   componente propio, se ve limpio en todos los navegadores modernos y no
+   necesita reinventar el foco/accesibilidad de un <input type="checkbox">. */
+.checkbox-field {
+  display: flex;
+  flex-direction: row;
+  align-items: flex-start;
+  gap: 9px;
+  font-size: 12.5px;
+  font-weight: 400;
+  color: var(--text);
+  margin-bottom: 16px;
+  cursor: pointer;
+}
+
+.checkbox-field input[type='checkbox'] {
+  flex-shrink: 0;
+  width: 17px;
+  height: 17px;
+  margin-top: 1px;
+  accent-color: var(--acc);
+  cursor: pointer;
+}
+
+.checkbox-field a {
+  color: var(--acc);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.checkbox-field a:hover {
+  text-decoration: underline;
+}
+
+/* Restablecer contraseña — mismo look de auth-card pero sin el panel de
+   marca ni las pestañas, ya que llega directo desde el correo. */
+.auth-card-standalone {
+  max-width: 380px;
+  margin: 0 auto;
+  box-shadow: var(--shadow-card);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  padding: 40px 32px;
+}
+
+/* Aviso fijo de "sin conexión" — arriba de todo, incluido el navbar. */
+.offline-banner {
+  position: sticky;
+  top: 0;
+  z-index: 60;
+  padding: 8px 16px;
+  text-align: center;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--danger);
+  background: var(--danger-bg);
+  border-bottom: 1px solid var(--danger-border);
+}
+
+/* Términos y Privacidad — página simple de solo texto */
+.legal-page {
+  display: flex;
+  justify-content: center;
+  padding: 20px 0 40px;
+}
+
+.legal-card {
+  width: 100%;
+  max-width: 640px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  line-height: 1.6;
+}
+
+.legal-card p {
+  color: var(--text);
 }
 
 /* Scanner — siempre oscuro (mismos valores fijos en ambos temas) porque la
