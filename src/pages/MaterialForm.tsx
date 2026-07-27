@@ -4,6 +4,7 @@ import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 import { useToast } from '../context/ToastContext'
 import { lookupProducto } from '../utils/lookupProducto'
+import { buscarMaterialPorCodigo } from '../utils/materiales'
 
 const SUGGESTED_CATEGORIAS = ['Asfalto', 'Grava', 'Cemento', 'Varilla', 'Concreto', 'Señalización', 'Mezcla asfáltica']
 const UNIDADES_COMUNES = ['pza', 'kg', 'ton', 'l', 'm', 'm³', 'caja', 'rollo']
@@ -43,6 +44,7 @@ export function MaterialForm() {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [sessionError, setSessionError] = useState(false)
   const [isExisting, setIsExisting] = useState(false)
 
   const [nombre, setNombre] = useState('')
@@ -94,22 +96,9 @@ export function MaterialForm() {
         setBuscandoProducto(true)
         const productoPromise = lookupProducto(codigo)
 
-        // Si el token de acceso quedó vencido (p. ej. la pestaña estuvo en
-        // segundo plano y el refresco automático no alcanzó a correr),
-        // esto lo renueva antes de seguir. Sin esto, la consulta de abajo
-        // usa un token vencido, RLS filtra todas las filas sin dar error,
-        // y un material que sí existe se muestra como "nuevo".
-        await supabase.auth.getSession()
-
-        const { data, error } = await supabase.from('materiales').select('*').eq('codigo', codigo).maybeSingle()
+        const data = await buscarMaterialPorCodigo(codigo)
         if (cancelled) return
         setLoading(false)
-
-        if (error) {
-          setBuscandoProducto(false)
-          setError(error.message)
-          return
-        }
 
         if (data) {
           setBuscandoProducto(false)
@@ -148,9 +137,9 @@ export function MaterialForm() {
     }
   }, [codigo, showToast])
 
-  async function handleSubmit(e: FormEvent) {
-    e.preventDefault()
+  async function guardar() {
     setError(null)
+    setSessionError(false)
 
     if (cantidad === '') {
       setError('Ingresa la cantidad.')
@@ -158,12 +147,18 @@ export function MaterialForm() {
     }
 
     // La política RLS de "materiales" exige una sesión autenticada válida.
-    // Si el token quedó vencido/roto (ej. por un reloj de sistema
-    // desincronizado), mejor detectarlo aquí con un mensaje claro que dejar
-    // que el insert falle con el error crudo de Postgres.
+    // Si el token quedó vencido/roto (ej. otra pestaña abierta con la misma
+    // cuenta renovó el token primero e invalidó este), mejor detectarlo aquí
+    // con un mensaje claro que dejar que el insert falle con el error crudo
+    // de Postgres. No se navega a /login desde aquí para no perder lo ya
+    // escrito en el formulario — se ofrece reintentar en el mismo lugar,
+    // porque si fue un problema pasajero (esa otra pestaña ya terminó de
+    // renovar) el siguiente intento puede funcionar sin que el usuario
+    // vuelva a escribir todo.
     const { data: sessionCheck } = await supabase.auth.getSession()
     if (!sessionCheck.session) {
-      setError('Tu sesión expiró o no es válida. Vuelve a iniciar sesión e intenta de nuevo.')
+      setError('Tu sesión expiró o no es válida.')
+      setSessionError(true)
       return
     }
 
@@ -186,16 +181,19 @@ export function MaterialForm() {
     setSaving(false)
 
     if (error) {
-      setError(
-        error.message.toLowerCase().includes('row-level security')
-          ? 'Tu sesión expiró o no es válida. Vuelve a iniciar sesión e intenta de nuevo.'
-          : error.message,
-      )
+      const esErrorDeSesion = error.message.toLowerCase().includes('row-level security')
+      setError(esErrorDeSesion ? 'Tu sesión expiró o no es válida.' : error.message)
+      setSessionError(esErrorDeSesion)
       return
     }
 
     showToast('success', 'Guardado', `${codigo} · ${cantidad} ${unidad}`)
     navigate('/listado')
+  }
+
+  async function handleSubmit(e: FormEvent) {
+    e.preventDefault()
+    await guardar()
   }
 
   if (loading) {
@@ -223,6 +221,15 @@ export function MaterialForm() {
         <span className="status-badge">
           {codigo} · {isExisting ? 'existe' : 'nuevo'}
         </span>
+        {isExisting && (
+          <button
+            type="button"
+            className="link-btn"
+            onClick={() => navigate(`/material/${encodeURIComponent(codigo)}/historial`)}
+          >
+            Ver historial
+          </button>
+        )}
       </div>
       <p className="hint">Código escaneado: <code>{codigo}</code></p>
 
@@ -262,10 +269,24 @@ export function MaterialForm() {
                   min={0}
                   step="any"
                   required
+                  disabled={isExisting}
                   placeholder="0"
                   value={cantidad}
                   onChange={(e) => setCantidad(e.target.value === '' ? '' : Number(e.target.value))}
                 />
+                {isExisting && (
+                  <span className="hint">
+                    Ya no se edita aquí — ve a{' '}
+                    <button
+                      type="button"
+                      className="link-btn"
+                      onClick={() => navigate(`/escaneo/${encodeURIComponent(codigo)}`)}
+                    >
+                      la ficha del material
+                    </button>{' '}
+                    y usa "Registrar movimiento" para que quede en el historial.
+                  </span>
+                )}
               </label>
 
               <div className="unidad-field">
@@ -388,7 +409,19 @@ export function MaterialForm() {
           </div>
         </div>
 
-        {error && <p className="auth-error">{error}</p>}
+        {error && (
+          <p className="auth-error">
+            {error}
+            {sessionError && (
+              <>
+                {' '}
+                <button type="button" className="link-btn" onClick={() => guardar()} disabled={saving}>
+                  Reintentar
+                </button>
+              </>
+            )}
+          </p>
+        )}
 
         <div className="form-actions">
           <button type="button" className="secondary" onClick={() => navigate('/scanner')}>

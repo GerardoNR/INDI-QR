@@ -34,6 +34,21 @@ export interface Categoria {
 
 export type CategoriaInput = Omit<Categoria, 'id' | 'created_at' | 'updated_at'>
 
+export type TipoMovimiento = 'entrada' | 'salida' | 'transferencia' | 'ajuste'
+
+export interface Movimiento {
+  id: string
+  material_id: string
+  tipo: TipoMovimiento
+  cantidad: number
+  destino: string | null
+  responsable: string
+  observaciones: string | null
+  created_at: string
+}
+
+export type MovimientoInput = Omit<Movimiento, 'id'>
+
 export interface Perfil {
   id: string
   nombre: string | null

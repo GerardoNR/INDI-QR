@@ -20,5 +20,12 @@ export const supabase = createClient(url || 'https://placeholder.supabase.co', a
     // sin depender de que nadie cambie esto sin darse cuenta más adelante.
     persistSession: true,
     autoRefreshToken: true,
+    // El default de supabase-js (PKCE) guarda una "llave" en el localStorage
+    // del dispositivo que PIDE el enlace de recuperación, y la exige de
+    // vuelta al abrirlo — si el correo se pide desde la compu y se abre en
+    // el teléfono, ese segundo dispositivo no tiene esa llave y el enlace no
+    // sirve de nada. Con "implicit", el enlace trae todo lo necesario y
+    // funciona en cualquier dispositivo/navegador que lo abra.
+    flowType: 'implicit',
   },
 })

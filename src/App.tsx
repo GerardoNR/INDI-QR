@@ -10,7 +10,9 @@ import { Restablecer } from './pages/Restablecer'
 import { Terminos } from './pages/Terminos'
 import { Privacidad } from './pages/Privacidad'
 import { Scanner } from './pages/Scanner'
+import { ScanResult } from './pages/ScanResult'
 import { MaterialForm } from './pages/MaterialForm'
+import { Historial } from './pages/Historial'
 import { Listado } from './pages/Listado'
 import { Dashboard } from './pages/Dashboard'
 import { Almacenes } from './pages/Almacenes'
@@ -63,10 +65,26 @@ function AppShell() {
               }
             />
             <Route
+              path="/escaneo/:codigo"
+              element={
+                <ProtectedRoute>
+                  <ScanResult />
+                </ProtectedRoute>
+              }
+            />
+            <Route
               path="/material/:codigo"
               element={
                 <ProtectedRoute>
                   <MaterialForm />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/material/:codigo/historial"
+              element={
+                <ProtectedRoute>
+                  <Historial />
                 </ProtectedRoute>
               }
             />

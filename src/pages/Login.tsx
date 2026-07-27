@@ -260,6 +260,15 @@ export function Login() {
               />
             </label>
 
+            {(window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') && (
+              <p className="hint">
+                Estás en <strong>localhost</strong> — el enlace que se manda por correo solo va a abrir en{' '}
+                <strong>esta misma computadora</strong>. Si vas a abrirlo en tu teléfono, primero entra a la app
+                desde esta computadora usando su dirección de red (algo como{' '}
+                <strong>https://TU-IP-LOCAL:5173</strong>) y pide el enlace desde ahí.
+              </p>
+            )}
+
             {error && <p className="auth-error">{error}</p>}
             {info && <p className="auth-info">{info}</p>}
 
