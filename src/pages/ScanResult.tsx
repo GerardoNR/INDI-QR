@@ -5,6 +5,7 @@ import { useToast } from '../context/ToastContext'
 import { buscarMaterialPorCodigo } from '../utils/materiales'
 import { registrarMovimiento, listarMovimientos, TIPO_MOVIMIENTO_LABEL } from '../utils/movimientos'
 import { formatearTiempoRelativo } from '../utils/relativeTime'
+import { traducirError } from '../utils/errorMessages'
 import type { Material, Movimiento, TipoMovimiento } from '../types'
 
 type Estado = 'buscando' | 'encontrado' | 'no-encontrado' | 'error'
@@ -61,7 +62,7 @@ export function ScanResult() {
       })
       .catch((e) => {
         if (cancelled) return
-        setError(e instanceof Error ? e.message : 'No se pudo conectar. Revisa tu conexión e intenta de nuevo.')
+        setError(traducirError(e))
         setEstado('error')
       })
 
@@ -125,7 +126,7 @@ export function ScanResult() {
       setVista('ficha')
       showToast('success', 'Movimiento registrado', TIPO_MOVIMIENTO_LABEL[tipo])
     } catch (e) {
-      setErrorMov(e instanceof Error ? e.message : 'No se pudo registrar el movimiento.')
+      setErrorMov(traducirError(e, 'No se pudo registrar el movimiento.'))
     } finally {
       setGuardandoMov(false)
     }

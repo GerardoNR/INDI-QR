@@ -13,5 +13,8 @@ export function translateAuthError(message: string): string {
   }
   if (m.includes('is invalid')) return 'Ese correo no es válido. Revisa que esté bien escrito.'
   if (m.includes('signups not allowed') || m.includes('signup is disabled')) return 'La creación de cuentas está deshabilitada en este proyecto.'
-  return message
+  // Si Supabase agrega o redacta distinto un mensaje que no está mapeado
+  // arriba, mejor un genérico en español que dejar pasar el original en
+  // inglés a la pantalla.
+  return 'Ocurrió un error. Intenta de nuevo.'
 }

@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 import { translateAuthError } from '../utils/authErrors'
+import { traducirError } from '../utils/errorMessages'
 import { EyeIcon, EyeOffIcon } from '../components/AuthIcons'
 import { PasswordStrengthMeter } from '../components/PasswordStrengthMeter'
 import { isPasswordAcceptable } from '../utils/validation'
@@ -54,7 +55,7 @@ export function Restablecer() {
       }
       setSuccess(true)
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'No se pudo conectar. Revisa tu conexión e intenta de nuevo.')
+      setError(traducirError(e))
     } finally {
       submittingRef.current = false
       setBusy(false)

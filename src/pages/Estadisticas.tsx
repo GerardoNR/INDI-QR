@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { categoryColor } from '../utils/categoryColors'
+import { traducirError } from '../utils/errorMessages'
 import type { Material } from '../types'
 
 function ultimosNDias(n: number) {
@@ -44,7 +45,7 @@ export function Estadisticas() {
         if (cancelled) return
 
         if (error) {
-          setError(error.message)
+          setError(traducirError(error))
           setLoading(false)
           return
         }
@@ -83,7 +84,7 @@ export function Estadisticas() {
         // Un fetch que falla a nivel de red dejaba loading en true para
         // siempre — sin este catch la página no se recuperaba sin recargar.
         if (cancelled) return
-        setError(e instanceof Error ? e.message : 'No se pudo conectar. Revisa tu conexión e intenta de nuevo.')
+        setError(traducirError(e))
         setLoading(false)
       }
     }

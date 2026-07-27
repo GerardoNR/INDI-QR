@@ -5,6 +5,7 @@ import type { Material } from '../types'
 import { exportExcel, exportPDF } from '../utils/export'
 import { categoryColor } from '../utils/categoryColors'
 import { useToast } from '../context/ToastContext'
+import { traducirError } from '../utils/errorMessages'
 
 export function Listado() {
   const [materiales, setMateriales] = useState<Material[]>([])
@@ -27,12 +28,12 @@ export function Listado() {
         .select('*')
         .order('created_at', { ascending: false })
 
-      if (error) setError(error.message)
+      if (error) setError(traducirError(error))
       else setMateriales(data ?? [])
     } catch (e) {
       // Un fetch que falla a nivel de red dejaba loading en true para
       // siempre — sin este catch la página no se recuperaba sin recargar.
-      setError(e instanceof Error ? e.message : 'No se pudo conectar. Revisa tu conexión e intenta de nuevo.')
+      setError(traducirError(e))
     } finally {
       setLoading(false)
     }
@@ -61,7 +62,7 @@ export function Listado() {
       setError(
         error.message.toLowerCase().includes('row-level security')
           ? 'Tu sesión expiró o no es válida. Vuelve a iniciar sesión e intenta de nuevo.'
-          : error.message,
+          : traducirError(error),
       )
       return
     }

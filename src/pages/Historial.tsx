@@ -3,6 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { buscarMaterialPorCodigo } from '../utils/materiales'
 import { listarMovimientos, TIPO_MOVIMIENTO_LABEL } from '../utils/movimientos'
 import { formatearTiempoRelativo } from '../utils/relativeTime'
+import { traducirError } from '../utils/errorMessages'
 import type { Material, Movimiento } from '../types'
 
 export function Historial() {
@@ -35,7 +36,7 @@ export function Historial() {
       })
       .catch((e) => {
         if (cancelled) return
-        setError(e instanceof Error ? e.message : 'No se pudo conectar. Revisa tu conexión e intenta de nuevo.')
+        setError(traducirError(e))
         setLoading(false)
       })
 

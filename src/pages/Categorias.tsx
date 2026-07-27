@@ -3,6 +3,7 @@ import { supabase } from '../lib/supabase'
 import type { Categoria } from '../types'
 import { categoryColor } from '../utils/categoryColors'
 import { useToast } from '../context/ToastContext'
+import { traducirError } from '../utils/errorMessages'
 
 export function Categorias() {
   const [categorias, setCategorias] = useState<Categoria[]>([])
@@ -33,7 +34,7 @@ export function Categorias() {
         supabase.from('materiales').select('categoria'),
       ])
 
-      if (categoriasRes.error) setError(categoriasRes.error.message)
+      if (categoriasRes.error) setError(traducirError(categoriasRes.error))
       else setCategorias(categoriasRes.data ?? [])
 
       const counts: Record<string, number> = {}
@@ -45,7 +46,7 @@ export function Categorias() {
     } catch (e) {
       // Un fetch que falla a nivel de red dejaba loading en true para
       // siempre — sin este catch la página no se recuperaba sin recargar.
-      setError(e instanceof Error ? e.message : 'No se pudo conectar. Revisa tu conexión e intenta de nuevo.')
+      setError(traducirError(e))
     } finally {
       setLoading(false)
     }
@@ -76,7 +77,7 @@ export function Categorias() {
           ? `Ya existe una categoría llamada "${nombre}".`
           : error.message.toLowerCase().includes('row-level security')
             ? 'Tu sesión expiró o no es válida. Vuelve a iniciar sesión e intenta de nuevo.'
-            : error.message,
+            : traducirError(error),
       )
       return
     }
@@ -109,7 +110,7 @@ export function Categorias() {
           ? `Ya existe una categoría llamada "${nombre}".`
           : error.message.toLowerCase().includes('row-level security')
             ? 'Tu sesión expiró o no es válida. Vuelve a iniciar sesión e intenta de nuevo.'
-            : error.message,
+            : traducirError(error),
       )
       return
     }
@@ -130,7 +131,7 @@ export function Categorias() {
       setError(
         error.message.toLowerCase().includes('row-level security')
           ? 'Tu sesión expiró o no es válida. Vuelve a iniciar sesión e intenta de nuevo.'
-          : error.message,
+          : traducirError(error),
       )
       return
     }

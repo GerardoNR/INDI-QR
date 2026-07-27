@@ -5,6 +5,7 @@ import { useAuth } from '../context/AuthContext'
 import { useToast } from '../context/ToastContext'
 import { lookupProducto } from '../utils/lookupProducto'
 import { buscarMaterialPorCodigo } from '../utils/materiales'
+import { traducirError } from '../utils/errorMessages'
 import type { EstadoMaterial } from '../types'
 
 const SUGGESTED_CATEGORIAS = ['Asfalto', 'Grava', 'Cemento', 'Varilla', 'Concreto', 'Señalización', 'Mezcla asfáltica']
@@ -137,7 +138,7 @@ export function MaterialForm() {
         // siempre — sin este catch la página se quedaba en "Buscando
         // código…" y no se recuperaba sin recargar.
         if (cancelled) return
-        setError(e instanceof Error ? e.message : 'No se pudo conectar. Revisa tu conexión e intenta de nuevo.')
+        setError(traducirError(e))
         setLoading(false)
         setBuscandoProducto(false)
       }
@@ -207,7 +208,7 @@ export function MaterialForm() {
 
     if (error) {
       const esErrorDeSesion = error.message.toLowerCase().includes('row-level security')
-      setError(esErrorDeSesion ? 'Tu sesión expiró o no es válida.' : error.message)
+      setError(esErrorDeSesion ? 'Tu sesión expiró o no es válida.' : traducirError(error))
       setSessionError(esErrorDeSesion)
       return
     }

@@ -122,6 +122,23 @@ async function startNativeScanner(
   }
 }
 
+// getUserMedia rechaza con un DOMException cuyo .name (no .message, que
+// suele venir vacío) indica la causa — se traduce por nombre en vez de
+// mostrar el .message crudo (casi siempre en inglés o vacío).
+const ERRORES_CAMARA: Record<string, string> = {
+  NotAllowedError: 'Permiso de cámara denegado.',
+  NotFoundError: 'No se encontró ninguna cámara en este dispositivo.',
+  NotReadableError: 'La cámara está siendo usada por otra aplicación.',
+  OverconstrainedError: 'Ninguna cámara cumple con lo que se le pidió.',
+  SecurityError: 'El origen no es seguro (se necesita HTTPS o localhost).',
+  AbortError: 'Se interrumpió el acceso a la cámara.',
+}
+
+function describirErrorCamara(e: unknown): string {
+  const nombre = e instanceof DOMException ? e.name : ''
+  return ERRORES_CAMARA[nombre] ?? 'No se pudo acceder a la cámara.'
+}
+
 async function startZxingScanner(
   video: HTMLVideoElement,
   onDetected: (codigo: string) => void,
@@ -212,9 +229,7 @@ export function Scanner() {
       } catch (e) {
         if (!cancelled) {
           setError(
-            'No se pudo acceder a la cámara: ' +
-              (e instanceof Error ? e.message : String(e)) +
-              '. Revisa los permisos del navegador (necesita HTTPS o localhost).',
+            describirErrorCamara(e) + ' Revisa los permisos del navegador (necesita HTTPS o localhost).',
           )
         }
       }

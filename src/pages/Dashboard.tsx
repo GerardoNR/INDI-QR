@@ -5,6 +5,7 @@ import { useAuth } from '../context/AuthContext'
 import { categoryColor } from '../utils/categoryColors'
 import { useCountUp } from '../utils/useCountUp'
 import { STOCK_BAJO_MAX } from '../lib/constants'
+import { traducirError } from '../utils/errorMessages'
 import type { Material } from '../types'
 
 function saludo() {
@@ -67,7 +68,7 @@ export function Dashboard() {
         const primerError =
           materialesCount.error ?? almacenesCount.error ?? semanaCount.error ?? todos.error ?? recientesData.error
         if (primerError) {
-          setError(primerError.message)
+          setError(traducirError(primerError))
           setLoading(false)
           return
         }
@@ -104,7 +105,7 @@ export function Dashboard() {
         // quedaba en true para siempre y la página no se recuperaba sin
         // recargar manualmente.
         if (cancelled) return
-        setError(e instanceof Error ? e.message : 'No se pudo conectar. Revisa tu conexión e intenta de nuevo.')
+        setError(traducirError(e))
         setLoading(false)
       }
     }

@@ -2,6 +2,7 @@ import { useEffect, useState, type FormEvent } from 'react'
 import { supabase } from '../lib/supabase'
 import type { Almacen } from '../types'
 import { useToast } from '../context/ToastContext'
+import { traducirError } from '../utils/errorMessages'
 
 export function Almacenes() {
   const [almacenes, setAlmacenes] = useState<Almacen[]>([])
@@ -32,7 +33,7 @@ export function Almacenes() {
         supabase.from('materiales').select('ubicacion'),
       ])
 
-      if (almacenesRes.error) setError(almacenesRes.error.message)
+      if (almacenesRes.error) setError(traducirError(almacenesRes.error))
       else setAlmacenes(almacenesRes.data ?? [])
 
       const counts: Record<string, number> = {}
@@ -44,7 +45,7 @@ export function Almacenes() {
     } catch (e) {
       // Un fetch que falla a nivel de red dejaba loading en true para
       // siempre — sin este catch la página no se recuperaba sin recargar.
-      setError(e instanceof Error ? e.message : 'No se pudo conectar. Revisa tu conexión e intenta de nuevo.')
+      setError(traducirError(e))
     } finally {
       setLoading(false)
     }
@@ -71,7 +72,7 @@ export function Almacenes() {
           ? `Ya existe un almacén llamado "${nombre}".`
           : error.message.toLowerCase().includes('row-level security')
             ? 'Tu sesión expiró o no es válida. Vuelve a iniciar sesión e intenta de nuevo.'
-            : error.message,
+            : traducirError(error),
       )
       return
     }
@@ -104,7 +105,7 @@ export function Almacenes() {
           ? `Ya existe un almacén llamado "${nombre}".`
           : error.message.toLowerCase().includes('row-level security')
             ? 'Tu sesión expiró o no es válida. Vuelve a iniciar sesión e intenta de nuevo.'
-            : error.message,
+            : traducirError(error),
       )
       return
     }
@@ -125,7 +126,7 @@ export function Almacenes() {
       setError(
         error.message.toLowerCase().includes('row-level security')
           ? 'Tu sesión expiró o no es válida. Vuelve a iniciar sesión e intenta de nuevo.'
-          : error.message,
+          : traducirError(error),
       )
       return
     }
