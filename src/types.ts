@@ -1,3 +1,5 @@
+export type EstadoMaterial = 'Disponible' | 'En uso' | 'Prestado' | 'Dañado' | 'En reparación' | 'Agotado'
+
 export interface Material {
   id: string
   codigo: string
@@ -6,6 +8,11 @@ export interface Material {
   unidad: string | null
   ubicacion: string | null
   categoria: string | null
+  pasillo: string | null
+  estante: string | null
+  nivel: string | null
+  proveedor: string | null
+  estado: EstadoMaterial
   notas: string | null
   registrado_por: string | null
   created_at: string

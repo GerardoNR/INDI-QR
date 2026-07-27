@@ -5,11 +5,13 @@ import { useAuth } from '../context/AuthContext'
 import { useToast } from '../context/ToastContext'
 import { lookupProducto } from '../utils/lookupProducto'
 import { buscarMaterialPorCodigo } from '../utils/materiales'
+import type { EstadoMaterial } from '../types'
 
 const SUGGESTED_CATEGORIAS = ['Asfalto', 'Grava', 'Cemento', 'Varilla', 'Concreto', 'Señalización', 'Mezcla asfáltica']
 const UNIDADES_COMUNES = ['pza', 'kg', 'ton', 'l', 'm', 'm³', 'caja', 'rollo']
+const ESTADOS: EstadoMaterial[] = ['Disponible', 'En uso', 'Prestado', 'Dañado', 'En reparación', 'Agotado']
 
-// Texto completo mostrado en cada chip — el valor guardado en la base de
+// Texto completo mostrado en el select — el valor guardado en la base de
 // datos sigue siendo la abreviación corta (clave de este objeto).
 const UNIDAD_LABELS: Record<string, string> = {
   pza: 'Piezas (pza)',
@@ -52,16 +54,21 @@ export function MaterialForm() {
   const [unidad, setUnidad] = useState('pza')
   const [ubicacion, setUbicacion] = useState('')
   const [categoria, setCategoria] = useState('')
+  const [pasillo, setPasillo] = useState('')
+  const [estante, setEstante] = useState('')
+  const [nivel, setNivel] = useState('')
+  const [estado, setEstado] = useState<EstadoMaterial>('Disponible')
+  const [proveedor, setProveedor] = useState('')
   const [notas, setNotas] = useState('')
-  const [addingCustomCat, setAddingCustomCat] = useState(false)
-  const [addingCustomUnidad, setAddingCustomUnidad] = useState(false)
+  const [unidadPersonalizada, setUnidadPersonalizada] = useState(false)
+  const [almacenPersonalizado, setAlmacenPersonalizado] = useState(false)
   const [buscandoProducto, setBuscandoProducto] = useState(false)
   const [autocompletado, setAutocompletado] = useState(false)
   const [almacenes, setAlmacenes] = useState<string[]>([])
   const [categoriasDb, setCategoriasDb] = useState<string[]>([])
 
   useEffect(() => {
-    // Renueva el token si venció mientras la pestaña estaba en segundo
+    // Renueva el token si venció mientras la pestaña estuvo en segundo
     // plano antes de pedir los catálogos — de lo contrario RLS filtra
     // todas las filas sin dar error y las listas de sugerencias salen vacías.
     supabase.auth.getSession().then(() => {
@@ -108,6 +115,11 @@ export function MaterialForm() {
           setUnidad(data.unidad ?? 'pza')
           setUbicacion(data.ubicacion ?? '')
           setCategoria(data.categoria ?? '')
+          setPasillo(data.pasillo ?? '')
+          setEstante(data.estante ?? '')
+          setNivel(data.nivel ?? '')
+          setEstado(data.estado ?? 'Disponible')
+          setProveedor(data.proveedor ?? '')
           setNotas(data.notas ?? '')
           showToast('info', 'Ya existe', 'Cargando datos para actualizar…')
           return
@@ -164,6 +176,14 @@ export function MaterialForm() {
 
     setSaving(true)
 
+    // Si el almacén es uno recién escrito (no estaba en la lista), se
+    // agrega también al catálogo de "almacenes" para que aparezca en el
+    // select la próxima vez — best effort: si falla (p. ej. ya lo agregó
+    // otra persona justo ahora), no se bloquea el guardado del material.
+    if (almacenPersonalizado && ubicacion.trim() && !almacenes.includes(ubicacion.trim())) {
+      await supabase.from('almacenes').upsert({ nombre: ubicacion.trim() }, { onConflict: 'nombre', ignoreDuplicates: true })
+    }
+
     const { error } = await supabase.from('materiales').upsert(
       {
         codigo,
@@ -172,6 +192,11 @@ export function MaterialForm() {
         unidad,
         ubicacion,
         categoria,
+        pasillo: pasillo.trim() || null,
+        estante: estante.trim() || null,
+        nivel: nivel.trim() || null,
+        proveedor: proveedor.trim() || null,
+        estado,
         notas,
         registrado_por: session?.user.email ?? null,
       },
@@ -205,14 +230,12 @@ export function MaterialForm() {
     )
   }
 
-  const baseCategorias = categoriasDb.length > 0 ? categoriasDb : SUGGESTED_CATEGORIAS
-  const catChips = categoria && !baseCategorias.includes(categoria)
-    ? [...baseCategorias, categoria]
-    : baseCategorias
+  const opcionesCategoria = categoriasDb.length > 0 ? categoriasDb : SUGGESTED_CATEGORIAS
+  const categoriaDatalist =
+    categoria && !opcionesCategoria.includes(categoria) ? [...opcionesCategoria, categoria] : opcionesCategoria
 
-  const unidadChips = unidad && !UNIDADES_COMUNES.includes(unidad)
-    ? [...UNIDADES_COMUNES, unidad]
-    : UNIDADES_COMUNES
+  const mostrarUnidadPersonalizada = unidadPersonalizada || (unidad !== '' && !UNIDADES_COMUNES.includes(unidad))
+  const mostrarAlmacenPersonalizado = almacenPersonalizado || (ubicacion !== '' && !almacenes.includes(ubicacion))
 
   return (
     <div className="form-page">
@@ -231,7 +254,9 @@ export function MaterialForm() {
           </button>
         )}
       </div>
-      <p className="hint">Código escaneado: <code>{codigo}</code></p>
+      <p className="hint">
+        Código: <code>{codigo}</code> (leído del código escaneado)
+      </p>
 
       <form onSubmit={handleSubmit}>
         <div className="form-grid">
@@ -290,37 +315,29 @@ export function MaterialForm() {
               </label>
 
               <div className="unidad-field">
-                <span className="field-label">Unidad</span>
-                <div className="cat-picker">
-                  {unidadChips.map((u) => (
-                    <button
-                      key={u}
-                      type="button"
-                      className={`cat-chip${unidad === u ? ' selected' : ''}`}
-                      onClick={() => {
-                        setUnidad(u)
-                        setAddingCustomUnidad(false)
-                      }}
-                    >
-                      {UNIDAD_LABELS[u] ?? u}
-                    </button>
-                  ))}
-                  <button
-                    type="button"
-                    className="cat-chip"
-                    onClick={() => {
-                      if (addingCustomUnidad) {
-                        setAddingCustomUnidad(false)
-                        if (!UNIDADES_COMUNES.includes(unidad)) setUnidad('')
+                <label>
+                  Unidad
+                  <select
+                    value={mostrarUnidadPersonalizada ? 'otro' : unidad}
+                    onChange={(e) => {
+                      if (e.target.value === 'otro') {
+                        setUnidadPersonalizada(true)
+                        setUnidad('')
                       } else {
-                        setAddingCustomUnidad(true)
+                        setUnidadPersonalizada(false)
+                        setUnidad(e.target.value)
                       }
                     }}
                   >
-                    {addingCustomUnidad ? 'Cancelar' : '+ otra'}
-                  </button>
-                </div>
-                {addingCustomUnidad && (
+                    {UNIDADES_COMUNES.map((u) => (
+                      <option key={u} value={u}>
+                        {UNIDAD_LABELS[u] ?? u}
+                      </option>
+                    ))}
+                    <option value="otro">Otro…</option>
+                  </select>
+                </label>
+                {mostrarUnidadPersonalizada && (
                   <input
                     autoFocus
                     placeholder="Unidad personalizada"
@@ -333,72 +350,106 @@ export function MaterialForm() {
           </div>
 
           <div className="form-section">
-            <span className="field-label">Categoría</span>
-            <div className="cat-picker">
-              {catChips.map((c) => {
-                const selected = categoria === c
-                return (
-                  <button
-                    key={c}
-                    type="button"
-                    className={`cat-chip${selected ? ' selected' : ''}`}
-                    onClick={() => {
-                      setCategoria(c)
-                      setAddingCustomCat(false)
-                      const sugerida = UNIDAD_SUGERIDA[c]
-                      if (sugerida) setUnidad(sugerida)
-                    }}
-                  >
-                    {c}
-                  </button>
-                )
-              })}
-              <button
-                type="button"
-                className="cat-chip"
-                onClick={() => {
-                  if (addingCustomCat) {
-                    setAddingCustomCat(false)
-                    if (!baseCategorias.includes(categoria)) setCategoria('')
+            <label>
+              Categoría
+              <input
+                list="categorias-datalist"
+                placeholder="Elige o escribe una categoría…"
+                value={categoria}
+                onChange={(e) => {
+                  const valor = e.target.value
+                  setCategoria(valor)
+                  const sugerida = UNIDAD_SUGERIDA[valor]
+                  if (sugerida) {
+                    setUnidad(sugerida)
+                    setUnidadPersonalizada(false)
+                  }
+                }}
+              />
+              <datalist id="categorias-datalist">
+                {categoriaDatalist.map((c) => (
+                  <option key={c} value={c} />
+                ))}
+              </datalist>
+            </label>
+          </div>
+
+          <div className="form-section">
+            <label>
+              Almacén
+              <select
+                value={mostrarAlmacenPersonalizado ? 'otro' : ubicacion}
+                onChange={(e) => {
+                  if (e.target.value === 'otro') {
+                    setAlmacenPersonalizado(true)
+                    setUbicacion('')
                   } else {
-                    setAddingCustomCat(true)
+                    setAlmacenPersonalizado(false)
+                    setUbicacion(e.target.value)
                   }
                 }}
               >
-                {addingCustomCat ? 'Cancelar' : '+ nueva'}
-              </button>
-            </div>
-            {addingCustomCat && (
+                <option value="" disabled>
+                  Elige un almacén…
+                </option>
+                {almacenes.map((a) => (
+                  <option key={a} value={a}>
+                    {a}
+                  </option>
+                ))}
+                <option value="otro">+ Crear almacén</option>
+              </select>
+            </label>
+            {mostrarAlmacenPersonalizado && (
               <input
                 autoFocus
-                placeholder="Nombre de la categoría"
-                value={categoria}
-                onChange={(e) => setCategoria(e.target.value)}
+                placeholder="Nombre del nuevo almacén"
+                value={ubicacion}
+                onChange={(e) => setUbicacion(e.target.value)}
               />
             )}
           </div>
 
           <div className="form-section">
+            <span className="field-label">Ubicación exacta (opcional)</span>
+            <div className="ubicacion-exacta-row">
+              <label>
+                Pasillo
+                <input value={pasillo} onChange={(e) => setPasillo(e.target.value)} placeholder="Ej. A" />
+              </label>
+              <label>
+                Estante
+                <input value={estante} onChange={(e) => setEstante(e.target.value)} placeholder="Ej. 3" />
+              </label>
+              <label>
+                Nivel
+                <input value={nivel} onChange={(e) => setNivel(e.target.value)} placeholder="Ej. 2" />
+              </label>
+            </div>
+          </div>
+
+          <div className="form-section">
             <label>
-              Ubicación
-              <input
-                list="almacenes-datalist"
-                value={ubicacion}
-                onChange={(e) => setUbicacion(e.target.value)}
-                placeholder="Elige o escribe un almacén…"
-              />
-              <datalist id="almacenes-datalist">
-                {almacenes.map((nombre) => (
-                  <option key={nombre} value={nombre} />
+              Estado
+              <select value={estado} onChange={(e) => setEstado(e.target.value as EstadoMaterial)}>
+                {ESTADOS.map((e) => (
+                  <option key={e} value={e}>
+                    {e}
+                  </option>
                 ))}
-              </datalist>
+              </select>
             </label>
-            {almacenes.length === 0 && (
-              <span className="hint hint-notice">
-                <span className="hint-notice-icon">!</span>
-                Aún no tienes almacenes registrados — agrégalos en la sección Almacenes.
-              </span>
-            )}
+          </div>
+
+          <div className="form-section">
+            <label>
+              Proveedor (opcional)
+              <input
+                value={proveedor}
+                onChange={(e) => setProveedor(e.target.value)}
+                placeholder="Ej. Cementos del Norte"
+              />
+            </label>
           </div>
 
           <div className="form-section">

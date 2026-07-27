@@ -14,6 +14,16 @@ create table if not exists materiales (
   updated_at timestamptz not null default now()
 );
 
+-- Ubicación exacta dentro del almacén (independiente de "ubicacion", que
+-- sigue siendo el almacén/bodega en general) y datos adicionales del
+-- formulario de registro.
+alter table materiales add column if not exists pasillo text;
+alter table materiales add column if not exists estante text;
+alter table materiales add column if not exists nivel text;
+alter table materiales add column if not exists proveedor text;
+alter table materiales add column if not exists estado text not null default 'Disponible'
+  check (estado in ('Disponible', 'En uso', 'Prestado', 'Dañado', 'En reparación', 'Agotado'));
+
 create unique index if not exists materiales_codigo_key on materiales (codigo);
 
 create index if not exists materiales_created_at_idx on materiales (created_at desc);

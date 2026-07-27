@@ -1731,6 +1731,16 @@ label {
   margin-top: 10px;
 }
 
+.ubicacion-exacta-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.ubicacion-exacta-row label {
+  flex: 1 1 100px;
+}
+
 .form-actions {
   display: flex;
   justify-content: space-between;
