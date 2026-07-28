@@ -2,9 +2,10 @@ import { useCallback, useEffect, useState, type FormEvent } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { useToast } from '../context/ToastContext'
+import { supabase } from '../lib/supabase'
 import { buscarMaterialPorCodigo } from '../utils/materiales'
 import { registrarMovimiento, listarMovimientos, TIPO_MOVIMIENTO_LABEL } from '../utils/movimientos'
-import { formatearTiempoRelativo } from '../utils/relativeTime'
+import { formatearTiempoRelativo, formatearFechaHora } from '../utils/relativeTime'
 import { traducirError } from '../utils/errorMessages'
 import type { Material, Movimiento, TipoMovimiento } from '../types'
 
@@ -28,14 +29,25 @@ export function ScanResult() {
   const [ultimoMovimiento, setUltimoMovimiento] = useState<Movimiento | null>(null)
   const [error, setError] = useState<string | null>(null)
 
+  const [almacenes, setAlmacenes] = useState<Array<{ id: string; nombre: string }>>([])
   const [tipo, setTipo] = useState<TipoMovimiento>('entrada')
   const [cantidadMov, setCantidadMov] = useState<number | ''>('')
-  const [destino, setDestino] = useState('')
+  const [almacenOrigenId, setAlmacenOrigenId] = useState('')
+  const [almacenDestinoId, setAlmacenDestinoId] = useState('')
   const [responsable, setResponsable] = useState('')
   const [fecha, setFecha] = useState(() => fechaLocalParaInput(new Date()))
   const [observaciones, setObservaciones] = useState('')
   const [guardandoMov, setGuardandoMov] = useState(false)
   const [errorMov, setErrorMov] = useState<string | null>(null)
+  const [confirmacion, setConfirmacion] = useState<string | null>(null)
+
+  useEffect(() => {
+    supabase
+      .from('almacenes')
+      .select('id, nombre')
+      .order('nombre')
+      .then(({ data }) => setAlmacenes(data ?? []))
+  }, [])
 
   // Reutilizada tanto al montar como después de guardar un movimiento —
   // así la ficha siempre refleja la cantidad y el "último movimiento" de
@@ -74,12 +86,26 @@ export function ScanResult() {
   function abrirFormularioMovimiento() {
     setTipo('entrada')
     setCantidadMov('')
-    setDestino('')
+    // El almacén de origen casi siempre es donde el material ya está — se
+    // precarga para no hacer que el usuario elija algo que de todos modos
+    // tiene que coincidir con esto (el trigger lo exige para salida y
+    // transferencia).
+    setAlmacenOrigenId(material?.almacen_id ?? '')
+    setAlmacenDestinoId('')
     setResponsable(session?.user.email ?? '')
     setFecha(fechaLocalParaInput(new Date()))
     setObservaciones('')
     setErrorMov(null)
+    setConfirmacion(null)
     setVista('movimiento')
+  }
+
+  function cambiarTipo(nuevoTipo: TipoMovimiento) {
+    setTipo(nuevoTipo)
+    // Hoy un material vive entero en un solo almacén (no existe una tabla
+    // de existencias por almacén) — una transferencia siempre mueve TODO
+    // lo que hay, así que no tiene sentido pedir una cantidad editable.
+    setCantidadMov(nuevoTipo === 'transferencia' ? material?.cantidad ?? '' : '')
   }
 
   async function handleGuardarMovimiento(e: FormEvent) {
@@ -94,20 +120,32 @@ export function ScanResult() {
       setErrorMov('La cantidad debe ser mayor a 0.')
       return
     }
-    if (tipo === 'transferencia' && !destino.trim()) {
-      setErrorMov('Ingresa el destino de la transferencia.')
+    if ((tipo === 'salida' || tipo === 'transferencia') && !almacenOrigenId) {
+      setErrorMov('Elige el almacén de origen.')
+      return
+    }
+    if ((tipo === 'entrada' || tipo === 'transferencia') && !almacenDestinoId) {
+      setErrorMov('Elige el almacén de destino.')
+      return
+    }
+    if (tipo === 'transferencia' && almacenOrigenId === almacenDestinoId) {
+      setErrorMov('El almacén de origen y de destino no pueden ser el mismo.')
       return
     }
     if (!responsable.trim()) {
       setErrorMov('Ingresa quién es el responsable.')
       return
     }
-    // Chequeo rápido en el cliente para dar el error al instante — el
+    // Chequeos rápidos en el cliente para dar el error al instante — el
     // trigger en la base de datos (aplicar_movimiento) es quien de verdad
-    // lo garantiza, por si la cantidad cambió entre que se cargó la ficha
-    // y que se guarda el movimiento.
+    // lo garantiza, por si algo cambió entre que se cargó la ficha y que
+    // se guarda el movimiento.
     if (tipo === 'salida' && material && cantidadMov > material.cantidad) {
       setErrorMov(`No hay suficiente cantidad disponible (actual: ${material.cantidad} ${material.unidad ?? ''}).`)
+      return
+    }
+    if (tipo === 'transferencia' && material && cantidadMov !== material.cantidad) {
+      setErrorMov(`Una transferencia debe ser por toda la cantidad actual (${material.cantidad} ${material.unidad ?? ''}).`)
       return
     }
 
@@ -117,14 +155,18 @@ export function ScanResult() {
         material_id: material!.id,
         tipo,
         cantidad: cantidadMov,
-        destino: tipo === 'transferencia' ? destino.trim() : null,
+        destino: null,
+        almacen_origen_id: tipo === 'salida' || tipo === 'transferencia' ? almacenOrigenId : null,
+        almacen_destino_id: tipo === 'entrada' || tipo === 'transferencia' ? almacenDestinoId : null,
         responsable: responsable.trim(),
         observaciones: observaciones.trim() || null,
         created_at: new Date(fecha).toISOString(),
       })
+      const fechaGuardado = new Date(fecha).toISOString()
       await cargarFicha()
       setVista('ficha')
-      showToast('success', 'Movimiento registrado', TIPO_MOVIMIENTO_LABEL[tipo])
+      setConfirmacion(`Registrado el ${formatearFechaHora(fechaGuardado)}`)
+      showToast('success', 'Movimiento registrado', `${TIPO_MOVIMIENTO_LABEL[tipo]} · ${formatearFechaHora(fechaGuardado)}`)
     } catch (e) {
       setErrorMov(traducirError(e, 'No se pudo registrar el movimiento.'))
     } finally {
@@ -192,7 +234,7 @@ export function ScanResult() {
         <form onSubmit={handleGuardarMovimiento} noValidate>
           <label>
             Tipo de movimiento
-            <select value={tipo} onChange={(e) => setTipo(e.target.value as TipoMovimiento)}>
+            <select value={tipo} onChange={(e) => cambiarTipo(e.target.value as TipoMovimiento)}>
               <option value="entrada">Entrada</option>
               <option value="salida">Salida</option>
               <option value="transferencia">Transferencia</option>
@@ -200,28 +242,58 @@ export function ScanResult() {
             </select>
           </label>
 
-          <label>
-            {tipo === 'ajuste' ? 'Nueva cantidad' : 'Cantidad'}
-            <input
-              type="number"
-              min={0}
-              step="any"
-              required
-              autoFocus
-              value={cantidadMov}
-              onChange={(e) => setCantidadMov(e.target.value === '' ? '' : Number(e.target.value))}
-            />
-          </label>
-
-          {tipo === 'transferencia' && (
+          {tipo === 'transferencia' ? (
             <label>
-              Destino
+              Cantidad a transferir
+              <input type="number" value={cantidadMov} disabled />
+            </label>
+          ) : (
+            <label>
+              {tipo === 'ajuste' ? 'Nueva cantidad' : 'Cantidad'}
               <input
+                type="number"
+                min={0}
+                step="any"
                 required
-                placeholder="Ej. Frente de obra 2"
-                value={destino}
-                onChange={(e) => setDestino(e.target.value)}
+                autoFocus
+                value={cantidadMov}
+                onChange={(e) => setCantidadMov(e.target.value === '' ? '' : Number(e.target.value))}
               />
+            </label>
+          )}
+          {tipo === 'transferencia' && (
+            <p className="hint">Se transfiere todo lo disponible — todavía no se puede mover solo una parte.</p>
+          )}
+
+          {(tipo === 'salida' || tipo === 'transferencia') && (
+            <label>
+              Almacén de origen
+              <select required value={almacenOrigenId} onChange={(e) => setAlmacenOrigenId(e.target.value)}>
+                <option value="" disabled>
+                  Elige un almacén…
+                </option>
+                {almacenes.map((a) => (
+                  <option key={a.id} value={a.id}>
+                    {a.nombre}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
+
+          {(tipo === 'entrada' || tipo === 'transferencia') && (
+            <label>
+              Almacén de destino
+              <select required value={almacenDestinoId} onChange={(e) => setAlmacenDestinoId(e.target.value)}>
+                <option value="" disabled>
+                  Elige un almacén…
+                </option>
+                {almacenes.map((a) => (
+                  <option key={a.id} value={a.id}>
+                    {a.nombre}
+                  </option>
+                ))}
+              </select>
             </label>
           )}
 
@@ -264,6 +336,7 @@ export function ScanResult() {
       <p className="hint">
         Código escaneado: <code>{codigo}</code>
       </p>
+      {confirmacion && <p className="auth-info">{confirmacion}</p>}
 
       <dl className="material-summary">
         <div>

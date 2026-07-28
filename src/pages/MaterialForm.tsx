@@ -53,7 +53,8 @@ export function MaterialForm() {
   const [nombre, setNombre] = useState('')
   const [cantidad, setCantidad] = useState<number | ''>('')
   const [unidad, setUnidad] = useState('pza')
-  const [ubicacion, setUbicacion] = useState('')
+  const [almacenId, setAlmacenId] = useState('')
+  const [nuevoAlmacenNombre, setNuevoAlmacenNombre] = useState('')
   const [categoria, setCategoria] = useState('')
   const [pasillo, setPasillo] = useState('')
   const [estante, setEstante] = useState('')
@@ -65,7 +66,7 @@ export function MaterialForm() {
   const [almacenPersonalizado, setAlmacenPersonalizado] = useState(false)
   const [buscandoProducto, setBuscandoProducto] = useState(false)
   const [autocompletado, setAutocompletado] = useState(false)
-  const [almacenes, setAlmacenes] = useState<string[]>([])
+  const [almacenes, setAlmacenes] = useState<Array<{ id: string; nombre: string }>>([])
   const [categoriasDb, setCategoriasDb] = useState<string[]>([])
 
   useEffect(() => {
@@ -75,9 +76,9 @@ export function MaterialForm() {
     supabase.auth.getSession().then(() => {
       supabase
         .from('almacenes')
-        .select('nombre')
+        .select('id, nombre')
         .order('nombre')
-        .then(({ data }) => setAlmacenes((data ?? []).map((a) => a.nombre)))
+        .then(({ data }) => setAlmacenes(data ?? []))
 
       supabase
         .from('categorias')
@@ -114,7 +115,7 @@ export function MaterialForm() {
           setNombre(data.nombre)
           setCantidad(data.cantidad)
           setUnidad(data.unidad ?? 'pza')
-          setUbicacion(data.ubicacion ?? '')
+          setAlmacenId(data.almacen_id ?? '')
           setCategoria(data.categoria ?? '')
           setPasillo(data.pasillo ?? '')
           setEstante(data.estante ?? '')
@@ -177,12 +178,30 @@ export function MaterialForm() {
 
     setSaving(true)
 
-    // Si el almacén es uno recién escrito (no estaba en la lista), se
-    // agrega también al catálogo de "almacenes" para que aparezca en el
-    // select la próxima vez — best effort: si falla (p. ej. ya lo agregó
-    // otra persona justo ahora), no se bloquea el guardado del material.
-    if (almacenPersonalizado && ubicacion.trim() && !almacenes.includes(ubicacion.trim())) {
-      await supabase.from('almacenes').upsert({ nombre: ubicacion.trim() }, { onConflict: 'nombre', ignoreDuplicates: true })
+    // Si el almacén es uno recién escrito (no estaba en la lista), se crea
+    // en el catálogo de "almacenes" antes de guardar el material, para
+    // tener su id real — es el campo que de verdad se guarda ahora
+    // (almacen_id), "ubicacion" (texto) la mantiene sincronizada sola un
+    // trigger en la base de datos.
+    let almacenIdFinal = almacenId
+    if (almacenPersonalizado && nuevoAlmacenNombre.trim()) {
+      const nombreNuevo = nuevoAlmacenNombre.trim()
+      const existente = almacenes.find((a) => a.nombre === nombreNuevo)
+      if (existente) {
+        almacenIdFinal = existente.id
+      } else {
+        const { data: creado, error: errorAlmacen } = await supabase
+          .from('almacenes')
+          .insert({ nombre: nombreNuevo })
+          .select('id')
+          .single()
+        if (errorAlmacen) {
+          setSaving(false)
+          setError(traducirError(errorAlmacen))
+          return
+        }
+        almacenIdFinal = creado.id
+      }
     }
 
     const { error } = await supabase.from('materiales').upsert(
@@ -191,7 +210,7 @@ export function MaterialForm() {
         nombre,
         cantidad,
         unidad,
-        ubicacion,
+        almacen_id: almacenIdFinal || null,
         categoria,
         pasillo: pasillo.trim() || null,
         estante: estante.trim() || null,
@@ -236,7 +255,8 @@ export function MaterialForm() {
     categoria && !opcionesCategoria.includes(categoria) ? [...opcionesCategoria, categoria] : opcionesCategoria
 
   const mostrarUnidadPersonalizada = unidadPersonalizada || (unidad !== '' && !UNIDADES_COMUNES.includes(unidad))
-  const mostrarAlmacenPersonalizado = almacenPersonalizado || (ubicacion !== '' && !almacenes.includes(ubicacion))
+  const mostrarAlmacenPersonalizado =
+    almacenPersonalizado || (almacenId !== '' && !almacenes.some((a) => a.id === almacenId))
 
   return (
     <div className="form-page">
@@ -379,14 +399,14 @@ export function MaterialForm() {
             <label>
               Almacén
               <select
-                value={mostrarAlmacenPersonalizado ? 'otro' : ubicacion}
+                value={mostrarAlmacenPersonalizado ? 'otro' : almacenId}
                 onChange={(e) => {
                   if (e.target.value === 'otro') {
                     setAlmacenPersonalizado(true)
-                    setUbicacion('')
+                    setAlmacenId('')
                   } else {
                     setAlmacenPersonalizado(false)
-                    setUbicacion(e.target.value)
+                    setAlmacenId(e.target.value)
                   }
                 }}
               >
@@ -394,8 +414,8 @@ export function MaterialForm() {
                   Elige un almacén…
                 </option>
                 {almacenes.map((a) => (
-                  <option key={a} value={a}>
-                    {a}
+                  <option key={a.id} value={a.id}>
+                    {a.nombre}
                   </option>
                 ))}
                 <option value="otro">+ Crear almacén</option>
@@ -405,8 +425,8 @@ export function MaterialForm() {
               <input
                 autoFocus
                 placeholder="Nombre del nuevo almacén"
-                value={ubicacion}
-                onChange={(e) => setUbicacion(e.target.value)}
+                value={nuevoAlmacenNombre}
+                onChange={(e) => setNuevoAlmacenNombre(e.target.value)}
               />
             )}
           </div>

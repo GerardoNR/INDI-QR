@@ -229,35 +229,156 @@ create policy "movimientos_insert_auth" on movimientos
 -- usuario autenticado puede hacerlo — corregir algo se hace con un nuevo
 -- movimiento de tipo 'ajuste', no reescribiendo el pasado.
 
--- Aplica el efecto del movimiento sobre materiales.cantidad. Corre en el
--- servidor sin importar qué cliente insertó el movimiento (frontend, SQL
--- Editor, otro script), así que la integridad no depende de que el
--- frontend "se porte bien".
+-- Fase 4: almacén real (FK) en vez de solo texto libre en "ubicacion", y
+-- lo mismo para el origen/destino de un movimiento — antes "destino" era
+-- cualquier texto (ej. "Frente de obra 2"), ahora tiene que ser un
+-- almacén que ya exista en el catálogo. "ubicacion" y "destino" (texto)
+-- se conservan y quedan sincronizados solos, para que nada de lo que ya
+-- lee/filtra por texto (Almacenes, Listado, Dashboard, Estadísticas, los
+-- exports a PDF/Excel) se rompa.
+alter table materiales add column if not exists almacen_id uuid references almacenes (id) on delete set null;
+
+update materiales m
+set almacen_id = a.id
+from almacenes a
+where m.almacen_id is null
+  and m.ubicacion is not null
+  and a.nombre = m.ubicacion;
+
+create or replace function sincronizar_ubicacion_texto()
+returns trigger as $$
+begin
+  if new.almacen_id is not null then
+    select nombre into new.ubicacion from almacenes where id = new.almacen_id;
+  end if;
+  return new;
+end;
+$$ language plpgsql;
+
+drop trigger if exists materiales_sincronizar_ubicacion on materiales;
+create trigger materiales_sincronizar_ubicacion
+  before insert or update on materiales
+  for each row
+  execute function sincronizar_ubicacion_texto();
+
+alter table movimientos add column if not exists almacen_origen_id uuid references almacenes (id) on delete set null;
+alter table movimientos add column if not exists almacen_destino_id uuid references almacenes (id) on delete set null;
+
+-- Quién registró el movimiento, tomado de la sesión activa en el
+-- servidor — nunca de un texto que mande el frontend. "responsable" se
+-- conserva solo como nombre visible (se llena con el correo de quien
+-- tiene la sesión).
+alter table movimientos add column if not exists usuario_id uuid references auth.users (id) on delete set null;
+
+-- Fija el usuario real y sincroniza "destino" (texto) con el nombre del
+-- almacén de destino elegido, para no depender de que el frontend mande
+-- los dos campos por separado.
+create or replace function preparar_movimiento()
+returns trigger as $$
+begin
+  new.usuario_id := auth.uid();
+
+  if new.almacen_destino_id is not null then
+    select nombre into new.destino from almacenes where id = new.almacen_destino_id;
+  end if;
+
+  return new;
+end;
+$$ language plpgsql;
+
+drop trigger if exists movimientos_preparar on movimientos;
+create trigger movimientos_preparar
+  before insert on movimientos
+  for each row
+  execute function preparar_movimiento();
+
+-- Quita la regla vieja que exigía "destino" (texto) en toda transferencia
+-- — la reemplaza la validación de almacenes de aplicar_movimiento(), con
+-- mensajes más claros. Se busca por definición porque Postgres le puso un
+-- nombre autogenerado que no se conoce de antemano.
+do $$
+declare
+  nombre_constraint text;
+begin
+  select conname into nombre_constraint
+  from pg_constraint
+  where conrelid = 'movimientos'::regclass
+    and contype = 'c'
+    and pg_get_constraintdef(oid) ilike '%destino is not null%';
+
+  if nombre_constraint is not null then
+    execute format('alter table movimientos drop constraint %I', nombre_constraint);
+  end if;
+end $$;
+
+-- Aplica el efecto del movimiento sobre materiales.cantidad (y, desde la
+-- Fase 4, también sobre materiales.almacen_id). Corre en el servidor sin
+-- importar qué cliente insertó el movimiento (frontend, SQL Editor, otro
+-- script), así que la integridad no depende de que el frontend "se porte
+-- bien".
+--
+-- Sobre la transferencia: hoy un material vive en un solo almacén con una
+-- sola cantidad (no existe todavía una tabla de existencias por almacén),
+-- así que una transferencia mueve TODO lo que hay — no se puede dejar
+-- una parte en cada almacén. Si algún día se necesita partir cantidades
+-- entre almacenes, esto hay que rediseñarlo con una tabla de existencias
+-- (material + almacén + cantidad) como fuente real de la verdad.
 create or replace function aplicar_movimiento()
 returns trigger as $$
 declare
   cantidad_actual numeric;
+  almacen_actual uuid;
 begin
   -- "for update" bloquea la fila del material hasta que termine esta
   -- transacción, para que dos movimientos simultáneos sobre el mismo
-  -- material no lean el mismo "cantidad_actual" y se pisen entre sí.
-  select cantidad into cantidad_actual from materiales where id = new.material_id for update;
+  -- material no lean el mismo "cantidad_actual"/"almacen_actual" y se
+  -- pisen entre sí.
+  select cantidad, almacen_id into cantidad_actual, almacen_actual
+  from materiales where id = new.material_id for update;
 
   if cantidad_actual is null then
     raise exception 'El material de este movimiento no existe.';
   end if;
 
   if new.tipo = 'entrada' then
-    update materiales set cantidad = cantidad_actual + new.cantidad where id = new.material_id;
+    if new.almacen_destino_id is null then
+      raise exception 'Una entrada necesita el almacén de destino.';
+    end if;
+    update materiales
+    set cantidad = cantidad_actual + new.cantidad,
+        almacen_id = new.almacen_destino_id
+    where id = new.material_id;
+
   elsif new.tipo = 'salida' then
+    if new.almacen_origen_id is null then
+      raise exception 'Una salida necesita el almacén de origen.';
+    end if;
+    if almacen_actual is not null and new.almacen_origen_id <> almacen_actual then
+      raise exception 'El material no está en el almacén de origen indicado.';
+    end if;
     if new.cantidad > cantidad_actual then
       raise exception 'No hay suficiente cantidad disponible (actual: %, solicitada: %).', cantidad_actual, new.cantidad;
     end if;
     update materiales set cantidad = cantidad_actual - new.cantidad where id = new.material_id;
+
+  elsif new.tipo = 'transferencia' then
+    if new.almacen_origen_id is null or new.almacen_destino_id is null then
+      raise exception 'Una transferencia necesita almacén de origen y de destino.';
+    end if;
+    if new.almacen_origen_id = new.almacen_destino_id then
+      raise exception 'El almacén de origen y de destino no pueden ser el mismo.';
+    end if;
+    if almacen_actual is not null and new.almacen_origen_id <> almacen_actual then
+      raise exception 'El material no está en el almacén de origen indicado.';
+    end if;
+    if new.cantidad <> cantidad_actual then
+      raise exception 'Una transferencia debe ser por toda la cantidad actual (%); todavía no se pueden mover cantidades parciales.', cantidad_actual;
+    end if;
+    update materiales set almacen_id = new.almacen_destino_id where id = new.material_id;
+
   elsif new.tipo = 'ajuste' then
     update materiales set cantidad = new.cantidad where id = new.material_id;
   end if;
-  -- 'transferencia' no cambia el total, solo queda registrada con su destino.
 
   return new;
 end;

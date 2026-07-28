@@ -15,6 +15,7 @@ export interface Material {
   estado: EstadoMaterial
   notas: string | null
   registrado_por: string | null
+  almacen_id: string | null
   created_at: string
   updated_at: string
 }
@@ -49,12 +50,17 @@ export interface Movimiento {
   tipo: TipoMovimiento
   cantidad: number
   destino: string | null
+  almacen_origen_id: string | null
+  almacen_destino_id: string | null
+  usuario_id: string | null
   responsable: string
   observaciones: string | null
   created_at: string
 }
 
-export type MovimientoInput = Omit<Movimiento, 'id'>
+// usuario_id lo fija el trigger "preparar_movimiento" a partir de la
+// sesión — el frontend nunca lo manda.
+export type MovimientoInput = Omit<Movimiento, 'id' | 'usuario_id'>
 
 export interface Perfil {
   id: string

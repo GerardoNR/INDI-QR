@@ -20,3 +20,12 @@ export function formatearTiempoRelativo(iso: string): string {
   }
   return rtf.format(Math.round(diffSegundos), 'second')
 }
+
+// "27/07/2026 a las 14:32" — para la confirmación visual justo después de
+// registrar un movimiento, donde conviene la fecha/hora exacta y no una
+// relativa que va a cambiar en cuanto pase un minuto.
+export function formatearFechaHora(iso: string): string {
+  const d = new Date(iso)
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()} a las ${pad(d.getHours())}:${pad(d.getMinutes())}`
+}
